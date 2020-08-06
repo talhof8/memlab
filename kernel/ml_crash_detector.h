@@ -29,18 +29,16 @@
 #include <linux/memcontrol.h>
 #include <linux/mmu_notifier.h>
 #include <linux/elf.h>
+#include <linux/netlink.h>
+#include <linux/fs.h>
 #include <asm/siginfo.h>
 #include <asm/io.h>
 #include <asm/pgalloc.h>
 #include <asm/tlb.h>
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
-#include <linux/fs.h>
 #include <asm/uaccess.h>
 #include <asm/atomic.h>
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/netlink.h>
 #include <net/netlink.h>
 #include <net/net_namespace.h>
 
