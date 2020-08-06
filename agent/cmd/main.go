@@ -6,6 +6,7 @@ import (
 	"github.com/memlab/agent/internal/kernel/communication"
 	"github.com/memlab/agent/internal/logging"
 	"github.com/pkg/errors"
+	"github.com/shirou/gopsutil/process"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
@@ -94,14 +95,7 @@ func startAgent() error {
 		// todo: test unwatch functionality
 	}()
 
-	for caughtSignal := range kernelCommunicator.CaughtSignals() {
-		logger.Info("Caught signal", zap.Any("Signal", caughtSignal))
-
-		if err := kernelCommunicator.NotifyHandledSignal(caughtSignal.Pid); err != nil {
-			logger.Error("Failed to notify handled signal", zap.Error(err), zap.Any("Signal", caughtSignal))
-			continue
-		}
-	}
+	handleCaughtSignals() // todo: move handling logic out of here, this is just a poc
 	return nil
 }
 
@@ -115,4 +109,62 @@ func stopAgent() error {
 	}
 
 	return nil
+}
+
+func handleCaughtSignals() {
+	for caughtSignal := range kernelCommunicator.CaughtSignals() {
+		logger.Info("Caught signal", zap.Any("Signal", caughtSignal))
+
+		handleCaughtSignal(caughtSignal)
+	}
+}
+
+func handleCaughtSignal(caughtSignal *communication.PayloadCaughtSignal) {
+	// todo: create smart enrichers chain.
+	logger.With(zap.Uint32("PID", caughtSignal.Pid))
+	ps, err := process.NewProcess(int32(caughtSignal.Pid))
+	if err != nil {
+		if errors.Cause(err) == process.ErrorProcessNotRunning {
+			logger.Error("Process is not running")
+			return
+		}
+
+		logger.Error("Failed to create process object", zap.Error(err))
+		return
+	}
+
+	executablePath, err := ps.Exe()
+	if err != nil {
+		logger.Error("Failed to get process' executable", zap.Error(err))
+		return
+	}
+
+	cmdline, err := ps.Cmdline()
+	if err != nil {
+		logger.Error("Failed to get process' cmdline", zap.Error(err))
+		return
+	}
+
+	cpuPercent, err := ps.CPUPercent()
+	if err != nil {
+		logger.Error("Failed to get process' CPU percent", zap.Error(err))
+		return
+	}
+
+	memPercent, err := ps.MemoryPercent()
+	if err != nil {
+		logger.Error("Failed to get process' memory percent", zap.Error(err))
+		return
+	}
+
+	// todo: get create time, cwd, foreground, username, uids, times, ppid, groups, pagefaults, nice, num fds, rlimit,
+	// todo: parents, threads count, tgid, open files
+
+	logger.Info("Dummy dump", zap.String("Executable", executablePath), zap.String("Cmdline", cmdline),
+		zap.Float64("CPUPercent", cpuPercent), zap.Float32("MemoryPercent", memPercent))
+
+	if err := kernelCommunicator.NotifyHandledSignal(caughtSignal.Pid); err != nil {
+		logger.Error("Failed to notify handled signal", zap.Error(err), zap.Any("Signal", caughtSignal))
+		return
+	}
 }

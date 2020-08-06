@@ -63,6 +63,7 @@ func NewCommunicator(recvFamilyName, sendFamilyName string, rootLogger *zap.Logg
 }
 
 func (c *Communicator) WatchProcess(pid uint32) error {
+	c.logger.Debug("Request to watch process", zap.Uint32("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionWatchProcess,
@@ -71,6 +72,7 @@ func (c *Communicator) WatchProcess(pid uint32) error {
 }
 
 func (c *Communicator) UnwatchProcess(pid uint32) error {
+	c.logger.Debug("Request to un-watch process", zap.Uint32("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionUnwatchProcess,
@@ -173,7 +175,6 @@ func (c *Communicator) sendMonitorProcessMessage(command uint8, payload *Payload
 		Data: data,
 	}
 
-	c.logger.Info("Sent message", zap.Any("M", message))
 	_, err = c.sendConn.Send(message, c.sendConnFamily.ID, netlink.Request)
 	if err != nil {
 		return errors.WithMessage(err, "send message")
