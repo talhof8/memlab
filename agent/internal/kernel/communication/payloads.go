@@ -1,63 +1,79 @@
 package communication
 
 import (
-	"bytes"
-	"encoding/binary"
+	"github.com/mdlayher/netlink"
+	"github.com/pkg/errors"
 )
 
-type MonitorProcessAction uint32
+// Netlink commands enum (see kernel/communication.h)
+const (
+	CommandMonitorProcess = iota
+	//_                     // CommandNotifyCaughtSignal
+	CommandHandledCaughtSignal
+)
 
 const (
-	ActionWatchProcess MonitorProcessAction = iota + 1
-	ActionUnwatchProcess
+	//CommandMonitorProcess = iota
+	CommandNotifyCaughtSignal = iota
+	//CommandHandledCaughtSignal
 )
 
-// A container around the Payload interface, so that binary.Read() can be used.
-type PayloadContainer struct {
-	Payload Payload
-}
+// Netlink attributes enum (see kernel/communication.h)
+const (
+	AttributePid uint16 = iota + 1 // Starts from 1
+	AttributeDoWatch
+	AttributeSignalNotificationSignal
+)
 
-type Payload interface {
-	Type() string
-}
+const (
+	ActionUnwatchProcess uint8 = 0
+	ActionWatchProcess   uint8 = 1
+)
 
 type PayloadMonitorProcess struct {
-	Pid    uint32
-	Action MonitorProcessAction
+	Pid   uint32
+	Watch uint8
 }
 
-func (p *PayloadMonitorProcess) Type() string {
-	return "monitor_process"
+func (p *PayloadMonitorProcess) Encode() ([]byte, error) {
+	encoder := netlink.NewAttributeEncoder()
+	encoder.Uint32(AttributePid, p.Pid)
+	encoder.Uint8(AttributeDoWatch, p.Watch)
+	return encoder.Encode()
 }
 
 type PayloadCaughtSignal struct {
-	Pid            uint32
-	ExecutablePath []byte
-	Signal         uint32
+	Pid    uint32
+	Signal uint32
 }
 
-func (p *PayloadCaughtSignal) Type() string {
-	return "caught_signal"
+func (p *PayloadCaughtSignal) Encode() ([]byte, error) {
+	encoder := netlink.NewAttributeEncoder()
+	encoder.Uint32(AttributePid, p.Pid)
+	encoder.Uint32(AttributeSignalNotificationSignal, p.Signal)
+	return encoder.Encode()
 }
 
-func encodePayload(payload Payload) ([]byte, error) {
-	buf := &bytes.Buffer{}
-	err := binary.Write(buf, binary.LittleEndian, &PayloadContainer{payload})
+func DecodePayloadCaughtSignal(data []byte) (*PayloadCaughtSignal, error) {
+	decoder, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return nil, err
 	}
 
-	return buf.Bytes(), nil
-}
-
-func decodePayload(data []byte) (Payload, error) {
-	var payloadContainer PayloadContainer
-	buf := bytes.NewBuffer(data)
-
-	err := binary.Read(buf, binary.LittleEndian, payloadContainer)
-	if err != nil {
-		return nil, err
+	payload := &PayloadCaughtSignal{}
+	for decoder.Next() {
+		switch decoder.Type() {
+		case AttributePid:
+			payload.Pid = decoder.Uint32()
+		case AttributeSignalNotificationSignal:
+			payload.Signal = decoder.Uint32()
+		default:
+			return nil, errors.Errorf("invalid attribute type ('%d')", decoder.Type())
+		}
 	}
 
-	return payloadContainer.Payload, nil
+	if err := decoder.Err(); err != nil {
+		return nil, errors.WithMessage(err, "malformed attributes")
+	}
+	return payload, nil
 }

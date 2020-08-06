@@ -1,12 +1,25 @@
 package logging
 
-import "go.uber.org/zap"
+import (
+	"github.com/pkg/errors"
+	"go.uber.org/zap"
+)
 
-func NewLogger(name string) (*zap.Logger, error) {
-	logger, err := zap.NewDevelopment() // todo: use production by default, use a debug flag
-	if err != nil {
-		return nil, err
+func NewLogger(name string, debugMode bool) (*zap.Logger, error) {
+	var (
+		logger *zap.Logger
+		err error
+	)
+
+	if debugMode {
+		logger, err = zap.NewDevelopment()
+	} else {
+		logger, err = zap.NewProduction()
 	}
-	logger.Named(name)
-	return logger, nil
+
+	if err != nil {
+		return nil, errors.WithMessage(err, "new logger")
+	}
+
+	return logger.Named(name), nil
 }

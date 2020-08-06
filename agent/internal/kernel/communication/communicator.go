@@ -1,81 +1,110 @@
 package communication
 
 import (
+	stdLibErrors "errors"
+	"github.com/mdlayher/genetlink"
 	"github.com/mdlayher/netlink"
-	"github.com/memlab/agent/internal/errors"
-	"github.com/memlab/agent/internal/logging"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"os"
 	"sync"
 	"syscall"
 )
 
-type nlGroup int
-
-const (
-	nlGroupMonitorProcess nlGroup = iota + 1
-	nlGroupSignals
-)
-
-const (
-	nlGroupsAll = nlGroupMonitorProcess | nlGroupSignals
-)
-
 type Communicator struct {
-	logger        *zap.Logger
-	waitGroup     sync.WaitGroup
-	conn          *netlink.Conn
-	caughtSignals chan *PayloadCaughtSignal
+	logger         *zap.Logger
+	waitGroup      sync.WaitGroup
+	sendConn       *genetlink.Conn
+	recvConn       *genetlink.Conn
+	sendConnFamily *genetlink.Family
+	recvConnFamily *genetlink.Family
+	caughtSignals  chan *PayloadCaughtSignal
 }
 
-func NewCommunicator(nlFamily int) (*Communicator, error) {
-	conn, err := netlink.Dial(nlFamily, &netlink.Config{
-		Groups:              uint32(nlGroupsAll),
+func connectToGenericNetlink(familyName string) (*genetlink.Conn, *genetlink.Family, error) {
+	conn, err := genetlink.Dial(&netlink.Config{
 		DisableNSLockThread: true,
 	})
 	if err != nil {
-		return nil, errors.WrappedErrDialNetlinkConnection(err)
+		return nil, nil, errors.WithMessage(err, "dial netlink connection")
 	}
 
-	logger, err := logging.NewLogger("memlab-kernel-communicator")
+	family, err := conn.GetFamily(familyName)
 	if err != nil {
-		return nil, errors.WrappedErrNewLogger(err)
+		if stdLibErrors.Is(err, os.ErrNotExist) {
+			return nil, nil, errors.Errorf("family '%s' does not exist", familyName)
+		}
+		return nil, nil, errors.WithMessagef(err, "get family '%s'", familyName)
 	}
+	return conn, &family, nil
+}
+
+func NewCommunicator(recvFamilyName, sendFamilyName string, rootLogger *zap.Logger) (*Communicator, error) {
+	recvConn, recvConnFamily, err := connectToGenericNetlink(recvFamilyName)
+	if err != nil {
+		return nil, err
+	}
+
+	sendConn, sendConnFamily, err := connectToGenericNetlink(sendFamilyName)
+	if err != nil {
+		return nil, err
+	}
+
+	logger := rootLogger.Named("communicator")
 
 	return &Communicator{
-		logger:        logger,
-		conn:          conn,
-		caughtSignals: make(chan *PayloadCaughtSignal, 0),
+		logger:         logger,
+		sendConn:       sendConn,
+		sendConnFamily: sendConnFamily,
+		recvConn:       recvConn,
+		recvConnFamily: recvConnFamily,
+		caughtSignals:  make(chan *PayloadCaughtSignal, 0),
 	}, nil
 }
 
 func (c *Communicator) WatchProcess(pid uint32) error {
 	payload := &PayloadMonitorProcess{
-		Pid:    pid,
-		Action: ActionWatchProcess,
+		Pid:   pid,
+		Watch: ActionWatchProcess,
 	}
-	_, err := c.sendMessage(payload)
-	return err
+	return c.sendMonitorProcessMessage(CommandMonitorProcess, payload)
 }
 
 func (c *Communicator) UnwatchProcess(pid uint32) error {
 	payload := &PayloadMonitorProcess{
-		Pid:    pid,
-		Action: ActionUnwatchProcess,
+		Pid:   pid,
+		Watch: ActionUnwatchProcess,
 	}
-	_, err := c.sendMessage(payload)
-	return err
+	return c.sendMonitorProcessMessage(CommandMonitorProcess, payload)
 }
 
-func (c *Communicator) ListenForSignals() error {
-	c.waitGroup.Add(1)
+func (c *Communicator) NotifyHandledSignal(pid uint32) error {
+	payload := &PayloadMonitorProcess{
+		Pid: pid,
+	}
+	return c.sendMonitorProcessMessage(CommandHandledCaughtSignal, payload)
+}
 
+func (c *Communicator) ListenForCaughtSignals() error {
+	c.waitGroup.Add(1)
 	go func() {
 		defer c.waitGroup.Done()
 
+		c.logger.Debug("Join family groups")
+		if !c.joinFamilyGroups() {
+			return
+		}
+
+		c.logger.Debug("Listen for netlink messages")
+		defer c.logger.Debug("Done listen for netlink messages")
+
 		for {
-			messages, err := c.conn.Receive()
+			messages, _, err := c.recvConn.Receive()
 			if err != nil {
-				if err == syscall.EBADF { // Most likely caused by c.close() - simply stop execution
+				// Since there's not way to gracefully close the connection (e.g, via a context cancellation),
+				// a call to close() is used to close it. A syscall.EBADF error is most likely caused by that close,
+				// hence we assume it's ok and do not write any error log.
+				if err == syscall.EBADF {
 					return
 				}
 
@@ -83,6 +112,7 @@ func (c *Communicator) ListenForSignals() error {
 				continue
 			}
 
+			c.logger.Debug("Received messages", zap.Int("Count", len(messages)))
 			c.handleMessages(messages)
 		}
 	}()
@@ -90,57 +120,78 @@ func (c *Communicator) ListenForSignals() error {
 	return nil
 }
 
-func (c *Communicator) Signals() <-chan *PayloadCaughtSignal {
+func (c *Communicator) CaughtSignals() <-chan *PayloadCaughtSignal {
 	return c.caughtSignals
 }
 
 // todo: think how to restore/clean state when kernel module keeps running and agent stops and vice-versa
 func (c *Communicator) Close() error {
-	if err := c.conn.Close(); err != nil {
-		return err
+	if err := c.sendConn.Close(); err != nil {
+		return errors.WithMessage(err, "close netlink connection")
 	}
+
+	if err := c.recvConn.Close(); err != nil {
+		return errors.WithMessage(err, "close netlink connection")
+	}
+
+	close(c.caughtSignals)
 
 	c.waitGroup.Wait()
 	return nil
 }
 
-func (c *Communicator) sendMessage(payload *PayloadMonitorProcess) (*netlink.Message, error) {
-	data, err := encodePayload(payload)
-	if err != nil {
-		return nil, errors.WrappedErrEncodePayload(err)
+func (c *Communicator) joinFamilyGroups() bool {
+	if len(c.recvConnFamily.Groups) == 0 {
+		c.logger.Debug("There are 0 groups for family", zap.String("FamilyName", c.sendConnFamily.Name))
+		return true
 	}
 
-	message := netlink.Message{
-		Header: netlink.Header{
-			// Package netlink will automatically set header fields
-			// which are set to zero
-			Flags: netlink.Request,
+	for _, group := range c.recvConnFamily.Groups {
+		c.logger.Debug("Joining family group", zap.String("GroupName", group.Name), zap.Uint32("GroupId",
+			group.ID))
+
+		err := c.recvConn.JoinGroup(group.ID)
+		if err != nil {
+			c.logger.Error("Failed to join group", zap.Error(err), zap.Uint32("GroupID", group.ID))
+			return false
+		}
+	}
+
+	return true
+}
+
+func (c *Communicator) sendMonitorProcessMessage(command uint8, payload *PayloadMonitorProcess) error {
+	data, err := payload.Encode()
+	if err != nil {
+		return errors.WithMessage(err, "encode payload")
+	}
+
+	message := genetlink.Message{
+		Header: genetlink.Header{
+			Command: command,
 		},
 		Data: data,
 	}
 
-	reply, err := c.conn.Send(message)
+	c.logger.Info("Sent message", zap.Any("M", message))
+	_, err = c.sendConn.Send(message, c.sendConnFamily.ID, netlink.Request)
 	if err != nil {
-		return nil, errors.WrappedErrSendMessage(err)
+		return errors.WithMessage(err, "send message")
 	}
-	return &reply, nil
+	return nil
 }
 
-func (c *Communicator) handleMessages(messages []netlink.Message) {
+func (c *Communicator) handleMessages(messages []genetlink.Message) {
 	for _, message := range messages {
 		if message.Data == nil {
+			c.logger.Debug("Message data is empty, continuing...")
 			continue
 		}
 
-		payload, err := decodePayload(message.Data)
+		caughtSignalPayload, err := DecodePayloadCaughtSignal(message.Data)
 		if err != nil {
-			c.logger.Error("Failed to decode payload", zap.Int("PayloadLen", len(message.Data)),
+			c.logger.Error("Failed to decode 'caught-signal' payload", zap.Int("PayloadLen", len(message.Data)),
 				zap.Error(err))
-			continue
-		}
-
-		caughtSignalPayload, ok := payload.(*PayloadCaughtSignal)
-		if !ok {
 			continue
 		}
 
