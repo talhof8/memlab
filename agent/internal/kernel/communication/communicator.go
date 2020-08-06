@@ -81,6 +81,7 @@ func (c *Communicator) UnwatchProcess(pid uint32) error {
 }
 
 func (c *Communicator) NotifyHandledSignal(pid uint32) error {
+	c.logger.Debug("Request to notify kernel that signal was handled", zap.Uint32("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid: pid,
 	}
