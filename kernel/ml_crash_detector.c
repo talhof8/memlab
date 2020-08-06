@@ -39,7 +39,7 @@
 #include "state.h"
 #include "communication.h"
 
-// todo: do not allow to add ml's agent pid or pid 0
+// todo: do not allow to add ml's agent pid
 
 // todo: move to some process.h (and also impl inside state.h)
 struct task_struct *get_task_by_pid(pid_t pid) {
@@ -72,7 +72,7 @@ bool is_signal_relevant(int sig) {
 }
 
 bool is_task_relevant(struct task_struct *dst) {
-    if (!dst) {
+    if (!dst || dst->pid == 0) {
         return false;
     }
 
