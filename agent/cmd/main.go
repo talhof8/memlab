@@ -3,51 +3,46 @@ package main
 import (
 	"fmt"
 	"github.com/jessevdk/go-flags"
-	"github.com/memlab/agent/internal/kernel/communication"
+	"github.com/memlab/agent/internal/detection"
+	"github.com/memlab/agent/internal/detection/detectors"
 	"github.com/memlab/agent/internal/logging"
 	"github.com/pkg/errors"
-	"github.com/shirou/gopsutil/process"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 )
 
-var opts struct {
-	MonitorPid uint32 `short:"p" description:"Monitor PID"`
-	Debug      bool   `short:"d" long:"debug" description:"Debug mode"`
+var options struct {
+	MonitorPid             uint32 `short:"p" long:"monitor-pid" description:"Monitor PID"`
+	MaxConcurrentDetectors int    `short:"m" long:"max-detectors" description:"Max concurrent detectors" default:"10"`
+	Debug                  bool   `short:"d" long:"debug" description:"Debug mode"`
 }
 
 const (
-	exitCodeErr         = -1
-	nlFamilyNameReceive = "memlab-ktu"
-	nlFamilyNameSend    = "memlab-utk"
+	exitCodeErr = -1
 )
 
 var (
-	logger             *zap.Logger
-	kernelCommunicator *communication.Communicator // todo: move control over it to internal component
-	monitorPid         uint32                      // todo: get monitor pid from some control component (http server for instance) and pass kernel communicator to it
-	signalsChan        = make(chan os.Signal)
+	logger              *zap.Logger
+	detectionController *detection.Controller
+	signalsChan         = make(chan os.Signal)
 )
 
 // todo: prettify code
 
 func main() {
-	_, err := flags.Parse(&opts)
+	_, err := flags.Parse(&options)
 	if err != nil {
 		fmt.Printf("Failed to parse arguments: %v\n", err)
 		os.Exit(exitCodeErr)
 	}
 
-	logger, err = logging.NewLogger("memlab-agent", opts.Debug)
+	logger, err = logging.NewLogger("memlab-agent", options.Debug)
 	if err != nil {
 		fmt.Printf("Failed to create logger: %v\n", err)
 		os.Exit(exitCodeErr)
 	}
-
-	monitorPid = opts.MonitorPid
 
 	setupSignalHandling()
 
@@ -65,106 +60,36 @@ func setupSignalHandling() {
 		if err := stopAgent(); err != nil {
 			logger.Fatal("Failed to stop agent", zap.Error(err))
 		}
-
-		os.Exit(0)
 	}()
 }
 
 func startAgent() error {
 	var err error
-	kernelCommunicator, err = communication.NewCommunicator(nlFamilyNameReceive, nlFamilyNameSend, logger)
+	detectionController, err = detection.NewController(logger, options.MaxConcurrentDetectors)
 	if err != nil {
-		return errors.WithMessage(err, "new communicator")
+		return errors.WithMessage(err, "new misbehavior detection controller")
 	}
 
-	if err := kernelCommunicator.ListenForCaughtSignals(); err != nil {
-		logger.Error("Failed to listen for caught-signals from kernel module", zap.Error(err))
-		return err
+	err = detectionController.AddDetector(detectors.DetectorTypeSignals, false, options.MonitorPid)
+	if err != nil {
+		return errors.WithMessagef(err, "adding detector '%s'", detectors.DetectorTypeSignals.Name())
 	}
 
-	// todo: remove
-	go func() {
-		logger.Info("Sleeping for 5 seconds before sending pid", zap.Uint32("PID", monitorPid))
-		time.Sleep(time.Second * 5)
-
-		if err := kernelCommunicator.WatchProcess(monitorPid); err != nil {
-			logger.Error("Failed to watch process", zap.Error(err), zap.Uint32("PID", monitorPid))
-			return
-		}
-
-		// todo: test unwatch functionality
-	}()
-
-	handleCaughtSignals() // todo: move handling logic out of here, this is just a poc
-	return nil
-}
-
-func stopAgent() error {
-	if kernelCommunicator == nil {
-		return errors.New("uninitialized communicator")
-	}
-
-	if err := kernelCommunicator.Close(); err != nil {
-		return errors.WithMessage(err, "close communicator")
+	if err := detectionController.Start(); err != nil {
+		return errors.WithMessage(err, "start detection controller")
 	}
 
 	return nil
 }
 
-func handleCaughtSignals() {
-	for caughtSignal := range kernelCommunicator.CaughtSignals() {
-		logger.Info("Caught signal", zap.Any("Signal", caughtSignal))
-
-		handleCaughtSignal(caughtSignal)
-	}
-}
-
-func handleCaughtSignal(caughtSignal *communication.PayloadCaughtSignal) {
-	// todo: create smart enrichers chain.
-	logger.With(zap.Uint32("PID", caughtSignal.Pid))
-	ps, err := process.NewProcess(int32(caughtSignal.Pid))
-	if err != nil {
-		if errors.Cause(err) == process.ErrorProcessNotRunning {
-			logger.Error("Process is not running")
-			return
-		}
-
-		logger.Error("Failed to create process object", zap.Error(err))
-		return
+func stopAgent() error {
+	if detectionController == nil {
+		return errors.New("uninitialized misbehavior detection controller")
 	}
 
-	executablePath, err := ps.Exe()
-	if err != nil {
-		logger.Error("Failed to get process' executable", zap.Error(err))
-		return
+	if err := detectionController.Stop(); err != nil {
+		return errors.WithMessage(err, "stop misbehavior detection controller")
 	}
 
-	cmdline, err := ps.Cmdline()
-	if err != nil {
-		logger.Error("Failed to get process' cmdline", zap.Error(err))
-		return
-	}
-
-	cpuPercent, err := ps.CPUPercent()
-	if err != nil {
-		logger.Error("Failed to get process' CPU percent", zap.Error(err))
-		return
-	}
-
-	memPercent, err := ps.MemoryPercent()
-	if err != nil {
-		logger.Error("Failed to get process' memory percent", zap.Error(err))
-		return
-	}
-
-	// todo: get create time, cwd, foreground, username, uids, times, ppid, groups, pagefaults, nice, num fds, rlimit,
-	// todo: parents, threads count, tgid, open files
-
-	logger.Info("Dummy dump", zap.String("Executable", executablePath), zap.String("Cmdline", cmdline),
-		zap.Float64("CPUPercent", cpuPercent), zap.Float32("MemoryPercent", memPercent))
-
-	if err := kernelCommunicator.NotifyHandledSignal(caughtSignal.Pid); err != nil {
-		logger.Error("Failed to notify handled signal", zap.Error(err), zap.Any("Signal", caughtSignal))
-		return
-	}
+	return nil
 }

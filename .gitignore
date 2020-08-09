@@ -24,3 +24,6 @@ cmake-build-*/
 *.order
 *.mod
 *.mod.c
+
+# Agent binary
+agent/agent

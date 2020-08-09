@@ -39,7 +39,7 @@ func connectToGenericNetlink(familyName string) (*genetlink.Conn, *genetlink.Fam
 	return conn, &family, nil
 }
 
-func NewCommunicator(recvFamilyName, sendFamilyName string, rootLogger *zap.Logger) (*Communicator, error) {
+func NewCommunicator(rootLogger *zap.Logger, recvFamilyName, sendFamilyName string) (*Communicator, error) {
 	recvConn, recvConnFamily, err := connectToGenericNetlink(recvFamilyName)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func NewCommunicator(recvFamilyName, sendFamilyName string, rootLogger *zap.Logg
 		return nil, err
 	}
 
-	logger := rootLogger.Named("communicator")
+	logger := rootLogger.Named("kernel-communicator")
 
 	return &Communicator{
 		logger:         logger,
@@ -63,7 +63,7 @@ func NewCommunicator(recvFamilyName, sendFamilyName string, rootLogger *zap.Logg
 }
 
 func (c *Communicator) WatchProcess(pid uint32) error {
-	c.logger.Debug("Request to watch process", zap.Uint32("PID", pid))
+	c.logger.Debug("Watch process", zap.Uint32("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionWatchProcess,
@@ -72,7 +72,7 @@ func (c *Communicator) WatchProcess(pid uint32) error {
 }
 
 func (c *Communicator) UnwatchProcess(pid uint32) error {
-	c.logger.Debug("Request to un-watch process", zap.Uint32("PID", pid))
+	c.logger.Debug("Un-watch process", zap.Uint32("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionUnwatchProcess,
@@ -81,11 +81,31 @@ func (c *Communicator) UnwatchProcess(pid uint32) error {
 }
 
 func (c *Communicator) NotifyHandledSignal(pid uint32) error {
-	c.logger.Debug("Request to notify kernel that signal was handled", zap.Uint32("PID", pid))
+	c.logger.Debug("Notify kernel that signal was handled", zap.Uint32("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid: pid,
 	}
 	return c.sendMonitorProcessMessage(CommandHandledCaughtSignal, payload)
+}
+
+func (c *Communicator) sendMonitorProcessMessage(command uint8, payload *PayloadMonitorProcess) error {
+	data, err := payload.Encode()
+	if err != nil {
+		return errors.WithMessage(err, "encode payload")
+	}
+
+	message := genetlink.Message{
+		Header: genetlink.Header{
+			Command: command,
+		},
+		Data: data,
+	}
+
+	_, err = c.sendConn.Send(message, c.sendConnFamily.ID, netlink.Request)
+	if err != nil {
+		return errors.WithMessage(err, "send message")
+	}
+	return nil
 }
 
 func (c *Communicator) ListenForCaughtSignals() error {
@@ -109,7 +129,7 @@ func (c *Communicator) ListenForCaughtSignals() error {
 				// hence we assume it's ok and do not write any error log.
 				if err == syscall.EBADF {
 					return
-				}
+				} // todo: make it work
 
 				c.logger.Error("Failed to receive messages", zap.Error(err))
 				continue
@@ -120,26 +140,6 @@ func (c *Communicator) ListenForCaughtSignals() error {
 		}
 	}()
 
-	return nil
-}
-
-func (c *Communicator) CaughtSignals() <-chan *PayloadCaughtSignal {
-	return c.caughtSignals
-}
-
-// todo: think how to restore/clean state when kernel module keeps running and agent stops and vice-versa
-func (c *Communicator) Close() error {
-	if err := c.sendConn.Close(); err != nil {
-		return errors.WithMessage(err, "close netlink connection")
-	}
-
-	if err := c.recvConn.Close(); err != nil {
-		return errors.WithMessage(err, "close netlink connection")
-	}
-
-	close(c.caughtSignals)
-
-	c.waitGroup.Wait()
 	return nil
 }
 
@@ -163,26 +163,6 @@ func (c *Communicator) joinFamilyGroups() bool {
 	return true
 }
 
-func (c *Communicator) sendMonitorProcessMessage(command uint8, payload *PayloadMonitorProcess) error {
-	data, err := payload.Encode()
-	if err != nil {
-		return errors.WithMessage(err, "encode payload")
-	}
-
-	message := genetlink.Message{
-		Header: genetlink.Header{
-			Command: command,
-		},
-		Data: data,
-	}
-
-	_, err = c.sendConn.Send(message, c.sendConnFamily.ID, netlink.Request)
-	if err != nil {
-		return errors.WithMessage(err, "send message")
-	}
-	return nil
-}
-
 func (c *Communicator) handleMessages(messages []genetlink.Message) {
 	for _, message := range messages {
 		if message.Data == nil {
@@ -199,4 +179,24 @@ func (c *Communicator) handleMessages(messages []genetlink.Message) {
 
 		c.caughtSignals <- caughtSignalPayload
 	}
+}
+
+func (c *Communicator) CaughtSignals() <-chan *PayloadCaughtSignal {
+	return c.caughtSignals
+}
+
+// todo: think how to restore/clean state when kernel module keeps running and agent stops and vice-versa
+func (c *Communicator) Close() error {
+	if err := c.sendConn.Close(); err != nil {
+		return errors.WithMessage(err, "close netlink connection")
+	}
+
+	if err := c.recvConn.Close(); err != nil {
+		return errors.WithMessage(err, "close netlink connection")
+	}
+
+	close(c.caughtSignals)
+
+	c.waitGroup.Wait()
+	return nil
 }
