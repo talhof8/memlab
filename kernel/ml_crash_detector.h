@@ -98,7 +98,7 @@ static u32 relevant_signals_mask =
         SIGNAL_MASK(SIGKILL) |
         SIGNAL_MASK(SIGUSR1) |
         SIGNAL_MASK(SIGUSR2) |
-        //SIGNAL_MASK(SIGSEGV)   |
+        SIGNAL_MASK(SIGSEGV)   |
         //SIGNAL_MASK(SIGPIPE)   |
         SIGNAL_MASK(SIGALRM) |
         SIGNAL_MASK(SIGTERM) |

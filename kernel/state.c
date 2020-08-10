@@ -8,6 +8,7 @@
 #include "state.h"
 
 int init_state() {
+    // todo: clean garbage pids (i.e, processes who terminated somehow but weren't removed from the map)
     return rhashtable_init(&watched_processes, &hashable_obj_params);
 }
 

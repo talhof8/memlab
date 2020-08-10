@@ -2,11 +2,13 @@ package detectors
 
 import (
 	"context"
+	"fmt"
 	kernelComm "github.com/memlab/agent/internal/kernel/communication"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/process"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"os/exec"
 	"sync"
 	"time"
 )
@@ -155,6 +157,16 @@ func (kd *SignalDetector) handleCaughtSignal(caughtSignal *kernelComm.PayloadCau
 		zap.Float64("CPUPercent", cpuPercent), zap.Float32("MemoryPercent", memPercent),
 		zap.Int64("CreateTime", createTime), zap.String("Cwd", cwd))
 
+	cmd := exec.Command("sudo", "procdump", "-p", fmt.Sprintf("%d", caughtSignal.Pid))
+	output, err := cmd.Output()
+	if err != nil {
+		funcLogger.Error("Failed to run command", zap.Error(err))
+		return
+	}
+
+	funcLogger.Debug("Procdump ran successfully", zap.ByteString("Output", output))
+
+	// todo: call on failure as well?
 	if err := kd.kernelCommunicator.NotifyHandledSignal(caughtSignal.Pid); err != nil {
 		funcLogger.Error("Failed to notify handled signal", zap.Error(err), zap.Any("Signal", caughtSignal))
 		return

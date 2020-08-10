@@ -237,11 +237,84 @@ static asmlinkage void ml_sys_kill(pid_t pid, int sig) {
 
 #endif
 
+static asmlinkage void internal_prepare_signal(int sig, struct task_struct *to) {
+    struct task_struct *from;
+    int err;
+    pid_t pid;
+
+
+    if (!to) {
+        goto exit;
+    }
+
+    rcu_read_lock();
+    get_task_struct(to);
+    rcu_read_unlock();
+
+    pid = to->pid;
+
+    if (!is_signal_relevant(sig)) {
+        goto exit;
+    }
+
+    from = current;
+
+    if (!is_task_relevant(to)) {
+        put_task_struct(to);
+        goto exit;
+    }
+
+    pr_info(
+            "===========prepare_signal==========\n"
+            "user:%d process:%d[%s] send SIG %d to %d[%s]\n",
+            (int) from_kuid(&init_user_ns, current_uid()), from->pid, from->comm, sig, to->pid, to->comm);
+    put_task_struct(to);
+
+    if ((err = ktu_send_caught_signal_notification(pid, sig)) < 0) {
+        pr_err("[ML Crash Detector] Failed to send caught-signal notification: (pid: %d, err: %d).\n", pid, err);
+        goto exit;
+    }
+
+    wait_on_watched_process_wait_queue(pid, wait_timeout_seconds);
+    remove_process_from_watched_processes(pid);
+
+    pr_info("[ML Crash Detector] ===========prepare_signal==========\n");
+
+    exit:
+    return;
+}
+
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(3, 3, 8)
+
+static asmlinkage void (*real_prepare_signal)(int sig, struct task_struct *p, bool force);
+
+static asmlinkage void ml_prepare_signal(int sig, struct task_struct *p, bool force) {
+    internal_prepare_signal(sig, p);
+    real_prepare_signal(sig, p, force);
+}
+
+#else
+
+static asmlinkage void (*real_prepare_signal)(int sig, struct task_struct *p, int from_ancestor_ns);
+
+static asmlinkage void ml_prepare_signal(int sig, struct task_struct *p, int from_ancestor_ns) {
+    internal_prepare_signal(sig, p);
+    real_prepare_signal(sig, p, from_ancestor_ns);
+}
+#endif
+
+// todo: hook crashes (__send_signal?)
 static struct ftrace_hook hook_list[] = {
+//        {
+//                .name = (SYSCALL_NAME("sys_kill")),
+//                .new_func = (ml_sys_kill),
+//                .orig_func = (&real_sys_kill),
+//        },
         {
-                .name = (SYSCALL_NAME("sys_kill")),
-                .new_func = (ml_sys_kill),
-                .orig_func = (&real_sys_kill),
+                .name = ("prepare_signal"),
+                .new_func = (ml_prepare_signal),
+                .orig_func = (&real_prepare_signal),
         },
 };
 
