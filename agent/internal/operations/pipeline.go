@@ -3,18 +3,17 @@ package operations
 import (
 	"context"
 	"github.com/memlab/agent/internal/operations/operators"
-	"go.uber.org/atomic"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
-	"sync"
 )
+
+var ErrOperatorFailure = errors.New("operator failure")
 
 type Pipeline struct {
 	logger    *zap.Logger
-	waitGroup sync.WaitGroup
 	context   context.Context
 	cancel    context.CancelFunc
 	operators []operators.Operator
-	running   *atomic.Bool
 }
 
 func NewPipeline(ctx context.Context, rootLogger *zap.Logger) *Pipeline {
@@ -26,7 +25,6 @@ func NewPipeline(ctx context.Context, rootLogger *zap.Logger) *Pipeline {
 		context:   ctx,
 		cancel:    cancel,
 		operators: make([]operators.Operator, 0),
-		running:   atomic.NewBool(false),
 	}
 }
 
@@ -35,17 +33,27 @@ func (p *Pipeline) AddOperators(ops ...operators.Operator) {
 }
 
 func (p *Pipeline) Start() error {
-	p.running.Toggle() // Turn on
+	if err := p.runOperators(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (p *Pipeline) WaitUntilCompletion() {
-	p.waitGroup.Wait()
-	p.running.Toggle() // Turn off
-}
+func (p *Pipeline) runOperators() error {
+	for _, operator := range p.operators {
+		err := operator.Operate(p.context)
+		if err != nil {
+			p.logger.Error("Operator failed", zap.String("Name", operator.Name()),
+				zap.Bool("StopOnFailure", operator.StopOnFailure()), zap.Error(err))
 
-func (p *Pipeline) Running() bool {
-	return p.running.Load()
+			if operator.StopOnFailure() {
+				return ErrOperatorFailure
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *Pipeline) Stop() error {

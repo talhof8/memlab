@@ -1,5 +1,9 @@
 package operators
 
+import "context"
+
 type Operator interface {
-	Operate() error
+	Name() string
+	Operate(ctx context.Context) error
+	StopOnFailure() bool
 }
