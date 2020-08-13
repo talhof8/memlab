@@ -17,13 +17,13 @@
 .idea/
 
 cmake-build-*/
-*.o
-*.cmd
-*.ko
-*.symvers
-*.order
-*.mod
-*.mod.c
+kernel/*.o
+kernel/*.cmd
+kernel/*.ko
+kernel/*.symvers
+kernel/*.order
+kernel/*.mod
+kernel/*.mod.c
 
 # Agent binary
 agent/agent
