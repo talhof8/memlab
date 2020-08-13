@@ -110,8 +110,6 @@ func (c *Controller) Start() error {
 		c.startDetector(detector)
 	}
 
-	c.waitGroup.Wait() // Block until all detectors are done.
-
 	return nil
 }
 
@@ -141,7 +139,13 @@ func (c *Controller) startDetector(detector detectors.Detector) {
 			funcLogger.Error("Failed to start detection for detector", zap.Error(err))
 			return
 		}
+
+		detector.WaitUntilCompletion()
 	}()
+}
+
+func (c *Controller) WaitUntilCompletion() {
+	c.waitGroup.Wait() // Block until all detectors are done.
 }
 
 func (c *Controller) Stop() error {

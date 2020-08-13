@@ -8,6 +8,7 @@ import (
 
 type Detector interface {
 	StartDetectionLoop() error
+	WaitUntilCompletion()
 	Running() bool
 	StopDetection() error
 	Name() string

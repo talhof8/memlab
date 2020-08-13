@@ -79,6 +79,7 @@ func startAgent() error {
 		return errors.WithMessage(err, "start detection controller")
 	}
 
+	detectionController.WaitUntilCompletion()
 	return nil
 }
 

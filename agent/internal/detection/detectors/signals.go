@@ -66,8 +66,6 @@ func (kd *SignalDetector) StartDetectionLoop() error {
 
 	kd.running.Toggle() // Turn on
 
-	kd.waitGroup.Wait() // Block until detection goroutines are done.
-	kd.running.Toggle() // Turn off
 	return nil
 }
 
@@ -100,7 +98,7 @@ func (kd *SignalDetector) handleCaughtSignals() {
 }
 
 func (kd *SignalDetector) handleCaughtSignal(caughtSignal *kernelComm.PayloadCaughtSignal) {
-	// todo: create smart enrichers pipeline.
+	// todo: create operators pipeline and move handling outside of detector scope.
 	funcLogger := kd.logger.With(zap.Uint32("PID", caughtSignal.Pid))
 
 	ps, err := process.NewProcess(int32(caughtSignal.Pid))
@@ -187,10 +185,12 @@ func (kd *SignalDetector) triggerMonitoredPid() {
 	// todo: test unwatch functionality
 }
 
+func (kd *SignalDetector) WaitUntilCompletion() {
+	kd.waitGroup.Wait() // Block until detection goroutines are done.
+	kd.running.Toggle() // Turn off
+}
+
 func (kd *SignalDetector) Running() bool {
-	if kd.context == context.TODO() {
-		return false
-	}
 	return kd.running.Load()
 }
 
