@@ -227,7 +227,6 @@ static asmlinkage void ml_sys_kill(struct pt_regs *regs) {
 }
 
 #else
-
 static asmlinkage void (*real_sys_kill)(pid_t pid, int sig);
 
 static asmlinkage void ml_sys_kill(pid_t pid, int sig) {
@@ -237,7 +236,7 @@ static asmlinkage void ml_sys_kill(pid_t pid, int sig) {
 
 #endif
 
-static asmlinkage void internal_prepare_signal(int sig, struct task_struct *to) {
+static asmlinkage void internal_force_sig(int sig, struct task_struct *to) {
     struct task_struct *from;
     int err;
     pid_t pid;
@@ -285,37 +284,46 @@ static asmlinkage void internal_prepare_signal(int sig, struct task_struct *to) 
 }
 
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(3, 3, 8)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 2, 0)
+// kernel/signal.c: force_sig_info_to_task(struct kernel_siginfo *info, struct task_struct *t)
 
-static asmlinkage void (*real_prepare_signal)(int sig, struct task_struct *p, bool force);
+static asmlinkage void (*real_force_sig_info_to_task)(struct kernel_siginfo *info, struct task_struct *t);
 
-static asmlinkage void ml_prepare_signal(int sig, struct task_struct *p, bool force) {
-    internal_prepare_signal(sig, p);
-    real_prepare_signal(sig, p, force);
+static asmlinkage void ml_force_sig_info_to_task(struct kernel_siginfo *info, struct task_struct *t) {
+    internal_force_sig(info->si_signo, t);
+    real_force_sig_info_to_task(info, t);
 }
 
 #else
+// kernel/signal.c: force_sig_info(int sig, struct siginfo *info, struct task_struct *t)
 
-static asmlinkage void (*real_prepare_signal)(int sig, struct task_struct *p, int from_ancestor_ns);
+static asmlinkage void (*real_force_sig_info)(int sig, struct task_struct *p, int from_ancestor_ns);
 
-static asmlinkage void ml_prepare_signal(int sig, struct task_struct *p, int from_ancestor_ns) {
-    internal_prepare_signal(sig, p);
-    real_prepare_signal(sig, p, from_ancestor_ns);
+static asmlinkage void ml_force_sig_info(int sig, struct siginfo *info, struct task_struct *t) {
+    internal_force_sig(sig, t);
+    real_force_sig_info(sig, t, from_ancestor_ns);
 }
 #endif
 
-// todo: hook crashes (__send_signal?)
 static struct ftrace_hook hook_list[] = {
-//        {
-//                .name = (SYSCALL_NAME("sys_kill")),
-//                .new_func = (ml_sys_kill),
-//                .orig_func = (&real_sys_kill),
-//        },
         {
-                .name = ("prepare_signal"),
-                .new_func = (ml_prepare_signal),
-                .orig_func = (&real_prepare_signal),
+                .name = (SYSCALL_NAME("sys_kill")),
+                .new_func = (ml_sys_kill),
+                .orig_func = (&real_sys_kill),
         },
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 2, 0)
+        {
+                .name = ("force_sig_info_to_task"),
+                .new_func = (ml_force_sig_info_to_task),
+                .orig_func = (&real_force_sig_info_to_task),
+        },
+#else
+        {
+                .name = ("force_sig_info"),
+                .new_func = (ml_force_sig_info),
+                .orig_func = (&real_force_sig_info),
+        },
+#endif
 };
 
 static int ml_init(void) {

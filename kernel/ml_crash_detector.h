@@ -139,4 +139,6 @@ void teardown_hooks(struct ftrace_hook *hooks, size_t count);
 
 static asmlinkage void internal_kill(pid_t pid, int sig);
 
+static asmlinkage void internal_force_sig(int sig, struct task_struct *to);
+
 #endif
