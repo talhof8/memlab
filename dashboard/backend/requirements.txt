@@ -1,0 +1,7 @@
+django==3.1
+PyYAML
+uritemplate
+Markdown
+Pygments
+django-filter
+django-guardian
