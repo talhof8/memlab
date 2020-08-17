@@ -5,3 +5,4 @@ Markdown
 Pygments
 django-filter
 django-guardian
+djangorestframework

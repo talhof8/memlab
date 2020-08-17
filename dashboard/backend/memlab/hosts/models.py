@@ -77,3 +77,4 @@ class ProcessConfiguration(models.Model):
     suspected_hang_duration = models.DurationField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+    restart_on_crash = models.BooleanField(default=True)
