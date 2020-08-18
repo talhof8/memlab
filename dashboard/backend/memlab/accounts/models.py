@@ -30,6 +30,19 @@ def pre_create_company(sender, instance, *args, **kwargs):
 class User(AbstractUser):
     """auth/login-related fields"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = models.CharField(
+        max_length=150,
+        unique=True,
+        help_text='Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.',
+        validators=[AbstractUser.username_validator],
+        error_messages={
+            'unique': "A user with that username already exists.",
+        },
+        blank=False
+    )
+    first_name = models.CharField(max_length=150, blank=False)
+    last_name = models.CharField(max_length=150, blank=False)
+    email = models.EmailField(blank=False)
 
 
 @receiver(post_save, sender=User)
