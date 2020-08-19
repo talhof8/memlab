@@ -6,10 +6,11 @@ from django.utils import timezone
 
 class Host(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=False, blank=False)
     hostname = models.CharField(max_length=500, blank=True, null=True)
+    # todo: remove completely or limit by using choices
     last_activity = models.CharField(max_length=150, null=False, blank=False)
-    last_activity_at = models.DateTimeField(null=False, blank=False)
+    last_activity_at = models.DateTimeField(default=timezone.now, null=False, blank=False)
 
 
 class Process(models.Model):

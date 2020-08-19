@@ -1,23 +1,36 @@
-# from rest_framework import viewsets
-#
-# from . import models
-# from . import serializers
-#
-#
-# class HostViewSet(viewsets.ModelViewSet):
-#     # todo: authenticate by api key
-#     queryset = models.Host.objects.all().order_by('pretty_id')
-#     serializer_class = serializers.CompanySerializer
-#
-#
-# class UserViewSet(viewsets.ModelViewSet):
-#     queryset = models.User.objects.all()
-#     serializer_class = serializers.UserSerializer
-#
-#
-# class ProfileViewSet(viewsets.ModelViewSet):
-#     queryset = models.Profile.objects.all()
-#     serializer_class = serializers.ProfileSerializer
-#
-#     def get_serializer_context(self):
-#         return {'request': None}
+from rest_framework import viewsets
+
+from . import models
+from . import serializers
+
+
+class HostViewSet(viewsets.ModelViewSet):
+    queryset = models.Host.objects.all()
+    serializer_class = serializers.HostSerializer
+
+    def get_serializer_context(self):
+        return {'request': None}
+
+
+class ProcessViewSet(viewsets.ModelViewSet):
+    queryset = models.Process.objects.all()
+    serializer_class = serializers.ProcessSerializer
+
+    def get_serializer_context(self):
+        return {'request': None}
+
+
+class ProcessEventViewSet(viewsets.ModelViewSet):
+    queryset = models.ProcessEvent.objects.all()
+    serializer_class = serializers.ProcessEventSerializer
+
+    def get_serializer_context(self):
+        return {'request': None}
+
+
+class ProcessConfigurationViewSet(viewsets.ModelViewSet):
+    queryset = models.ProcessConfiguration.objects.all()
+    serializer_class = serializers.ProcessConfigurationSerializer
+
+    def get_serializer_context(self):
+        return {'request': None}
