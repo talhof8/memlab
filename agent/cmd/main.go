@@ -17,6 +17,8 @@ var options struct {
 	MonitorPid             uint32 `short:"p" long:"monitor-pid" description:"Monitor PID"`
 	MaxConcurrentDetectors int    `short:"m" long:"max-detectors" description:"Max concurrent detectors" default:"10"`
 	Debug                  bool   `short:"d" long:"debug" description:"Debug mode"`
+	ApiUrl                 string `short:"u" long:"api-url" description:"Api URL"`     // todo: move to a config file.
+	ApiToken               string `short:"t" long:"api-token" description:"Api token"` // todo: move to a config file.
 }
 
 const (
