@@ -10,7 +10,7 @@ class Host(models.Model):
     public_ip_address = models.GenericIPAddressField(null=False, blank=False)
     hostname = models.CharField(max_length=500, blank=True, null=True)
     first_seen = models.DateTimeField(auto_now_add=True)
-    last_keepalive_at = models.DateTimeField(default=timezone.now, null=False, blank=False)
+    last_probe_at = models.DateTimeField(auto_now=True)
     last_boot_at = models.DateTimeField(null=True, blank=True)
     operating_system = models.CharField(max_length=20, null=True, blank=True)  # E.g: freebsd, linux
     platform = models.CharField(max_length=150, null=True, blank=True)  # E.g: ubuntu, linuxmint
@@ -28,9 +28,9 @@ class Process(models.Model):
     pid = models.IntegerField(null=False, blank=False)
     executable = models.CharField(max_length=255, null=False, blank=False)
     command_line = models.CharField(max_length=1000, null=False, blank=False)
-    is_active = models.BooleanField(default=True)
     monitored = models.BooleanField(default=False)
-    seen_at = models.DateTimeField(default=timezone.now, null=False, blank=False)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
     monitored_since = models.DateTimeField(null=True, blank=True)
     disappeared_at = models.DateTimeField(null=True, blank=True)
 

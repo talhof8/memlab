@@ -4,7 +4,11 @@ from . import models
 
 
 class HostAdmin(admin.ModelAdmin):
-    readonly_fields = ("first_seen",)
+    readonly_fields = ("first_seen", "last_probe_at",)
+
+
+class ProcessAdmin(admin.ModelAdmin):
+    readonly_fields = ("first_seen_at", "last_seen_at",)
 
 
 class ProcessEventAdmin(admin.ModelAdmin):
@@ -16,6 +20,6 @@ class ProcessConfigurationAdmin(admin.ModelAdmin):
 
 
 admin.site.register(models.Host, HostAdmin)
-admin.site.register(models.Process)
+admin.site.register(models.Process, ProcessAdmin)
 admin.site.register(models.ProcessEvent, ProcessEventAdmin)
 admin.site.register(models.ProcessConfiguration, ProcessConfigurationAdmin)
