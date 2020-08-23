@@ -14,7 +14,10 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Exclude IntelliJ files, they will be recreated from the build files.
 .idea/
+# But keep dictionaries to have less false positives in spellcheck inspection.
+!.idea/dictionaries
 
 cmake-build-*/
 kernel/*.o

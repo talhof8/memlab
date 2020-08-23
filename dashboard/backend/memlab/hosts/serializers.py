@@ -13,10 +13,14 @@ class HostSerializer(serializers.HyperlinkedModelSerializer):
 
 class ProcessSerializer(serializers.HyperlinkedModelSerializer):
     id = serializers.ReadOnlyField()
+    machine_id = serializers.CharField()
 
     class Meta:
         model = models.Process
         fields = "__all__"
+        extra_kwargs = {
+            "machine_id": {"write_only": True}
+        }
 
 
 class ProcessEventSerializer(serializers.HyperlinkedModelSerializer):

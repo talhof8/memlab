@@ -107,7 +107,7 @@ func (c *Controller) Start() error {
 	defer c.lock.RUnlock()
 
 	for _, detector := range c.detectors {
-		c.startDetector(detector)
+		c.startDetector(detector) // Note: must not block otherwise RLock() will be blocked as well.
 	}
 
 	return nil

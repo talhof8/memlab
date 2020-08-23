@@ -6,11 +6,20 @@ from django.utils import timezone
 
 class Host(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ip_address = models.GenericIPAddressField(null=False, blank=False)
+    machine_id = models.CharField(max_length=150, blank=False, null=False)
+    public_ip_address = models.GenericIPAddressField(null=False, blank=False)
     hostname = models.CharField(max_length=500, blank=True, null=True)
-    # todo: remove completely or limit by using choices
-    last_activity = models.CharField(max_length=150, null=False, blank=False)
-    last_activity_at = models.DateTimeField(default=timezone.now, null=False, blank=False)
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_keepalive_at = models.DateTimeField(default=timezone.now, null=False, blank=False)
+    last_boot_at = models.DateTimeField(null=True, blank=True)
+    operating_system = models.CharField(max_length=20, null=True, blank=True)  # E.g: freebsd, linux
+    platform = models.CharField(max_length=150, null=True, blank=True)  # E.g: ubuntu, linuxmint
+    platform_family = models.CharField(max_length=150, null=True, blank=True)  # E.g: debian, rhel
+    platform_version = models.CharField(max_length=150, null=True, blank=True)
+    kernel_version = models.CharField(max_length=20, null=True, blank=True)
+    kernel_architecture = models.CharField(max_length=20, null=True, blank=True)
+    virtualization_system = models.CharField(max_length=150, null=True, blank=True)
+    virtualization_role = models.CharField(max_length=10, null=True, blank=True)  # Guest or host
 
 
 class Process(models.Model):
