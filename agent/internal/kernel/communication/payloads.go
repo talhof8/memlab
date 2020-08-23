@@ -5,17 +5,17 @@ import (
 	"github.com/pkg/errors"
 )
 
+// enum ml_usr_to_kern_commands
 // Netlink commands enum (see kernel/communication.h)
 const (
 	CommandMonitorProcess = iota
-	//_                     // CommandNotifyCaughtSignal
 	CommandHandledCaughtSignal
 )
 
+// ml_kern_to_usr_commands
+// Netlink commands enum (see kernel/communication.h)
 const (
-	//CommandMonitorProcess = iota
 	CommandNotifyCaughtSignal = iota
-	//CommandHandledCaughtSignal
 )
 
 // Netlink attributes enum (see kernel/communication.h)
