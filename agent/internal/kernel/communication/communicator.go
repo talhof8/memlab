@@ -11,6 +11,8 @@ import (
 	"syscall"
 )
 
+// todo: find a better way of communicating than creating two separate generic-netlink families
+
 type Communicator struct {
 	logger         *zap.Logger
 	waitGroup      sync.WaitGroup
