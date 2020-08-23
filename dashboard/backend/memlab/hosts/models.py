@@ -1,7 +1,6 @@
 import uuid
 
 from django.db import models
-from django.utils import timezone
 
 
 class Host(models.Model):
@@ -32,7 +31,6 @@ class Process(models.Model):
     first_seen_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
     monitored_since = models.DateTimeField(null=True, blank=True)
-    disappeared_at = models.DateTimeField(null=True, blank=True)
 
     @classmethod
     def get_monitored_processes_by_host_ip(cls, host_ip):
