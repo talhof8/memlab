@@ -39,9 +39,9 @@ class HostViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         # todo: support sending a partial list and omit empty values
 
         host = models.Host.objects.update_or_create(machine_id=machine_id, defaults={
-            "last_keepalive_at": timezone.now(),
             "public_ip_address": public_ip_address,
             "hostname": hostname,
+            "last_probe_at": timezone.now(),
             "last_boot_at": last_boot_at,
             "operating_system": operating_system,
             "platform": platform,
