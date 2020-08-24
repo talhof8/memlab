@@ -1,7 +1,6 @@
 package messages
 
 import (
-	"github.com/denisbrodbeck/machineid"
 	"github.com/glendc/go-external-ip"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/host"
@@ -26,13 +25,9 @@ type HostStatusReport struct {
 	VirtualizationRole   string `json:"virtualization_role"`
 }
 
-func NewHostStatusReport() (*HostStatusReport, error) {
+func NewHostStatusReport(machineId string) (*HostStatusReport, error) {
 	hostStatusReport := &HostStatusReport{}
 
-	machineId, err := machineid.ID() // todo: find a fallback on error
-	if err != nil {
-		return nil, errors.WithMessage(err, "get machine id")
-	}
 	hostStatusReport.MachineId = machineId
 
 	hostInfo, err := host.Info()

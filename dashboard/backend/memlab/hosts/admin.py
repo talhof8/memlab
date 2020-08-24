@@ -8,7 +8,7 @@ class HostAdmin(admin.ModelAdmin):
 
 
 class ProcessAdmin(admin.ModelAdmin):
-    readonly_fields = ("first_seen_at", "last_seen_at",)
+    readonly_fields = ("last_seen_at",)
 
 
 class ProcessEventAdmin(admin.ModelAdmin):

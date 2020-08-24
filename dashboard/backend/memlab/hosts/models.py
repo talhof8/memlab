@@ -22,15 +22,33 @@ class Host(models.Model):
 
 
 class Process(models.Model):
+    STATUS_RUNNING = 'R'
+    STATUS_SLEEP = 'S'
+    STATUS_STOP = 'T'
+    STATUS_IDLE = 'I'
+    STATUS_ZOMBIE = 'Z'
+    STATUS_WAIT = 'W'
+    STATUS_LOCK = 'L'
+    STATUSES = [
+        (STATUS_RUNNING, "Running"),
+        (STATUS_SLEEP, "Sleep"),
+        (STATUS_STOP, "Stop"),
+        (STATUS_IDLE, "Idle"),
+        (STATUS_ZOMBIE, "Zombie"),
+        (STATUS_WAIT, "Wait"),
+        (STATUS_LOCK, "Lock"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     host = models.ForeignKey(Host, on_delete=models.CASCADE, null=False, blank=False)
     pid = models.IntegerField(null=False, blank=False)
     executable = models.CharField(max_length=255, null=False, blank=False)
     command_line = models.CharField(max_length=1000, null=False, blank=False)
-    monitored = models.BooleanField(default=False)
-    first_seen_at = models.DateTimeField(auto_now_add=True)
+    create_time = models.DateTimeField(null=False, blank=False)
     last_seen_at = models.DateTimeField(auto_now=True)
+    monitored = models.BooleanField(default=False)
     monitored_since = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=1, choices=STATUSES, default=STATUS_RUNNING)
 
     @classmethod
     def get_monitored_processes_by_host_ip(cls, host_ip):

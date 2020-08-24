@@ -2,10 +2,15 @@ package control
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/denisbrodbeck/machineid"
 	"github.com/memlab/agent/internal/control/client"
 	"github.com/memlab/agent/internal/control/messages"
+	"github.com/memlab/agent/internal/control/responses"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
@@ -39,6 +44,7 @@ type Plane struct {
 	waitGroup sync.WaitGroup
 	client    *client.RestfulClient
 	config    *PlaneConfig
+	machineId string
 }
 
 func NewPlane(ctx context.Context, rootLogger *zap.Logger, config *PlaneConfig) (*Plane, error) {
@@ -53,11 +59,17 @@ func NewPlane(ctx context.Context, rootLogger *zap.Logger, config *PlaneConfig) 
 		return nil, errors.WithMessage(err, "new restful client")
 	}
 
+	machineId, err := machineid.ID() // todo: find a fallback on error
+	if err != nil {
+		return nil, errors.WithMessage(err, "get machine id")
+	}
+
 	return &Plane{
-		context: ctx,
-		cancel:  cancel,
-		client:  restfulClient,
-		config:  config,
+		context:   ctx,
+		cancel:    cancel,
+		client:    restfulClient,
+		config:    config,
+		machineId: machineId,
 	}, nil
 }
 
@@ -86,7 +98,7 @@ func (p *Plane) reportHostStatus() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			message, err := messages.NewHostStatusReport()
+			message, err := messages.NewHostStatusReport(p.machineId)
 			if err != nil {
 				p.logger.Error("Failed to create host status report", zap.Error(err))
 				continue
@@ -96,9 +108,7 @@ func (p *Plane) reportHostStatus() {
 			if err != nil {
 				p.logger.Error("Failed to send host status report", zap.Error(err))
 				continue
-			} else if response.StatusCode != http.StatusCreated {
-				p.logger.Warn("Got a bad status code", zap.Int("Got", response.StatusCode),
-					zap.Int("Expected", http.StatusOK))
+			} else if valid := p.validateResponse(response, http.StatusCreated); !valid {
 				continue
 			}
 		}
@@ -115,7 +125,12 @@ func (p *Plane) reportProcessList() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			message, err := messages.NewProcessListReport()
+			backendProcesses, success := p.fetchProcessListFromBackend()
+			if !success {
+				continue
+			}
+
+			message, err := messages.NewProcessListReport(p.machineId, backendProcesses)
 			if err != nil {
 				p.logger.Error("Failed to create process list report", zap.Error(err))
 				continue
@@ -125,13 +140,56 @@ func (p *Plane) reportProcessList() {
 			if err != nil {
 				p.logger.Error("Failed to send process list report", zap.Error(err))
 				continue
-			} else if response.StatusCode != http.StatusCreated {
-				p.logger.Warn("Got a bad status code", zap.Int("Got", response.StatusCode),
-					zap.Int("Expected", http.StatusOK))
+			} else if valid := p.validateResponse(response, http.StatusCreated); !valid {
 				continue
 			}
 		}
 	}
+}
+
+func (p *Plane) fetchProcessListFromBackend() (map[int32]*responses.Process, bool) {
+	endpoint := fmt.Sprintf("%s/by_machine/%s/", endpointProcesses, p.machineId)
+
+	httpResponse, err := p.client.Get(endpoint, nil)
+	if err != nil {
+		p.logger.Error("Failed to list processes", zap.Error(err))
+		return nil, false
+	} else if valid := p.validateResponse(httpResponse, http.StatusOK); !valid {
+		return nil, false
+	}
+
+	defer func() {
+		if err := httpResponse.Body.Close(); err != nil {
+			p.logger.Error("Failed to close http response body", zap.Error(err))
+		}
+	}()
+
+	bodyBytes, err := ioutil.ReadAll(httpResponse.Body)
+	if err != nil {
+		p.logger.Error("Failed to read http response body", zap.Error(err))
+		return nil, false
+	}
+
+	processesList := make([]*responses.Process, 0)
+	if err := json.Unmarshal(bodyBytes, &processesList); err != nil {
+		p.logger.Error("Failed to parse http response body", zap.Error(err))
+		return nil, false
+	}
+
+	processes := make(map[int32]*responses.Process, len(processesList))
+	for _, process := range processesList {
+		processes[process.Pid] = process
+	}
+	return processes, true
+}
+
+func (p *Plane) validateResponse(response *http.Response, desiredStatus int) bool {
+	if response.StatusCode != desiredStatus {
+		p.logger.Warn("Got a bad status code", zap.Int("Got", response.StatusCode),
+			zap.Int("Expected", desiredStatus))
+		return false
+	}
+	return true
 }
 
 func (p *Plane) subscribeToMonitorCommands() {

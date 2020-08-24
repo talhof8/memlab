@@ -1,5 +1,5 @@
 from django.utils import timezone
-from rest_framework import viewsets, mixins, status
+from rest_framework import viewsets, mixins, status, decorators
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
@@ -64,6 +64,12 @@ class ProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Up
                      viewsets.GenericViewSet):
     queryset = models.Process.objects.all()
     serializer_class = serializers.ProcessSerializer
+
+    @decorators.action(detail=False, methods=['get'], url_path='by_machine')
+    def by_machine(self, request, machine_id):
+        instances = models.Process.objects.filter(user__id=self.request.user.id, host__machine_id=machine_id)
+        serializer = self.get_serializer(instances, many=True)
+        return Response(serializer.data)
 
     def get_serializer_context(self):
         return {'request': None}

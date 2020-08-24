@@ -7,6 +7,7 @@ require (
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/glendc/go-external-ip v0.0.0-20200601212049-c872357d968e
 	github.com/go-ole/go-ole v1.2.4 // indirect
+	github.com/hashicorp/go-multierror v1.1.0
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/mdlayher/genetlink v1.0.0
 	github.com/mdlayher/netlink v1.1.0

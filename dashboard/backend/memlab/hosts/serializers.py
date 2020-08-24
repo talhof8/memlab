@@ -18,6 +18,7 @@ class ProcessSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = models.Process
         fields = "__all__"
+        read_only_fields = ["host"]
         extra_kwargs = {
             "machine_id": {"write_only": True}
         }
