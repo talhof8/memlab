@@ -2,6 +2,7 @@ package detectors
 
 import (
 	"context"
+	"github.com/memlab/agent/internal/detection/requests"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -34,11 +35,11 @@ func (dt DetectorType) Name() string {
 	return name
 }
 
-func NewDetector(detectorType DetectorType, ctx context.Context, rootLogger *zap.Logger, monitorPid uint32) (
-	Detector, error) {
+func NewDetector(detectorType DetectorType, ctx context.Context, rootLogger *zap.Logger,
+	detectionRequest requests.DetectionRequest) (Detector, error) {
 	switch detectorType {
 	case DetectorTypeSignals:
-		return newSignalDetector(detectorType, ctx, rootLogger, monitorPid)
+		return newSignalDetector(detectorType, ctx, rootLogger, detectionRequest)
 	default:
 		return nil, errors.Errorf("unknown detector type '%d'", detectorType)
 	}

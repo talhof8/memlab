@@ -3,6 +3,7 @@ package detectors
 import (
 	"context"
 	"fmt"
+	"github.com/memlab/agent/internal/detection/requests"
 	kernelComm "github.com/memlab/agent/internal/kernel/communication"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/process"
@@ -10,7 +11,6 @@ import (
 	"go.uber.org/zap"
 	"os/exec"
 	"sync"
-	"time"
 )
 
 const (
@@ -19,18 +19,24 @@ const (
 )
 
 type SignalDetector struct {
-	detectorType       DetectorType
-	waitGroup          sync.WaitGroup
-	context            context.Context
-	cancel             context.CancelFunc
-	logger             *zap.Logger
-	kernelCommunicator *kernelComm.Communicator
-	running            *atomic.Bool
-	monitorPid         uint32 // todo: remove
+	detectorType         DetectorType
+	waitGroup            sync.WaitGroup
+	context              context.Context
+	cancel               context.CancelFunc
+	logger               *zap.Logger
+	kernelCommunicator   *kernelComm.Communicator
+	running              *atomic.Bool
+	detectSignalsRequest *requests.RequestDetectSignals
+	monitorPid           uint32
 }
 
 func newSignalDetector(detectorType DetectorType, ctx context.Context, rootLogger *zap.Logger,
-	monitorPid uint32) (*SignalDetector, error) {
+	detectionRequest requests.DetectionRequest) (*SignalDetector, error) {
+	detectSignalsRequest, ok := detectionRequest.(*requests.RequestDetectSignals)
+	if !ok {
+		return nil, errors.New("failed to convert interface to detection request object")
+	}
+
 	logger := rootLogger.Named("signal-detector")
 
 	kernelCommunicator, err := kernelComm.NewCommunicator(logger, nlFamilyNameReceive, nlFamilyNameSend)
@@ -41,13 +47,14 @@ func newSignalDetector(detectorType DetectorType, ctx context.Context, rootLogge
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &SignalDetector{
-		detectorType:       detectorType,
-		logger:             logger,
-		context:            ctx,
-		cancel:             cancel,
-		kernelCommunicator: kernelCommunicator,
-		running:            atomic.NewBool(false),
-		monitorPid:         monitorPid, // todo: remove
+		detectorType:         detectorType,
+		logger:               logger,
+		context:              ctx,
+		cancel:               cancel,
+		kernelCommunicator:   kernelCommunicator,
+		running:              atomic.NewBool(false),
+		detectSignalsRequest: detectSignalsRequest,
+		monitorPid:           detectSignalsRequest.Pid,
 	}, nil
 }
 
@@ -60,9 +67,7 @@ func (kd *SignalDetector) StartDetectionLoop() error {
 		return err
 	}
 
-	// todo: remove
-	kd.waitGroup.Add(1)
-	go kd.triggerMonitoredPid()
+	kd.startKernelSignalDetection()
 
 	kd.running.Toggle() // Turn on
 
@@ -99,7 +104,7 @@ func (kd *SignalDetector) handleCaughtSignals() {
 
 func (kd *SignalDetector) handleCaughtSignal(caughtSignal *kernelComm.PayloadCaughtSignal) {
 	// todo: create operators pipeline and move handling outside of detector scope.
-	funcLogger := kd.logger.With(zap.Uint32("PID", caughtSignal.Pid))
+	funcLogger := kd.logger.With(zap.Uint32("Pid", caughtSignal.Pid))
 
 	ps, err := process.NewProcess(int32(caughtSignal.Pid))
 	if err != nil {
@@ -171,18 +176,20 @@ func (kd *SignalDetector) handleCaughtSignal(caughtSignal *kernelComm.PayloadCau
 	}
 }
 
-func (kd *SignalDetector) triggerMonitoredPid() {
-	defer kd.waitGroup.Done()
-
-	kd.logger.Info("Sleeping for 5 seconds before sending pid", zap.Uint32("PID", kd.monitorPid))
-	time.Sleep(time.Second * 5)
-
+func (kd *SignalDetector) startKernelSignalDetection() {
+	kd.logger.Debug("Start kernel signal detection for process", zap.Uint32("Pid", kd.monitorPid))
 	if err := kd.kernelCommunicator.WatchProcess(kd.monitorPid); err != nil {
-		kd.logger.Error("Failed to watch process", zap.Error(err), zap.Uint32("PID", kd.monitorPid))
+		kd.logger.Error("Failed to watch process", zap.Error(err), zap.Uint32("Pid", kd.monitorPid))
 		return
 	}
+}
 
-	// todo: test unwatch functionality
+func (kd *SignalDetector) stopKernelSignalDetection() {
+	kd.logger.Debug("Stop kernel signal detection for process", zap.Uint32("Pid", kd.monitorPid))
+	if err := kd.kernelCommunicator.UnwatchProcess(kd.monitorPid); err != nil {
+		kd.logger.Error("Failed to unwatch process", zap.Error(err), zap.Uint32("Pid", kd.monitorPid))
+		return
+	}
 }
 
 func (kd *SignalDetector) WaitUntilCompletion() {
@@ -195,6 +202,8 @@ func (kd *SignalDetector) Running() bool {
 }
 
 func (kd *SignalDetector) StopDetection() error {
+	kd.stopKernelSignalDetection()
+
 	kd.cancel()
 
 	if err := kd.kernelCommunicator.Close(); err != nil {

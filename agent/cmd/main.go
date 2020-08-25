@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/jessevdk/go-flags"
+	"github.com/memlab/agent/internal/control"
 	"github.com/memlab/agent/internal/detection"
 	"github.com/memlab/agent/internal/detection/detectors"
 	"github.com/memlab/agent/internal/logging"
@@ -27,7 +28,7 @@ const (
 
 var (
 	logger              *zap.Logger
-	detectionController *detection.Controller
+	controlPlane *control.Plane
 	signalsChan         = make(chan os.Signal)
 )
 
@@ -66,11 +67,12 @@ func setupSignalHandling() {
 }
 
 func startAgent() error {
-	var err error
-	detectionController, err = detection.NewController(logger, options.MaxConcurrentDetectors)
+	detectionController, err := detection.NewController(logger, options.MaxConcurrentDetectors)
 	if err != nil {
-		return errors.WithMessage(err, "new misbehavior detection controller")
+		return errors.WithMessage(err, "new detection controller")
 	}
+
+	controlPlane, err = control.NewPlane(logger, detectionController)
 
 	err = detectionController.AddDetector(detectors.DetectorTypeSignals, false, options.MonitorPid)
 	if err != nil {
@@ -87,11 +89,11 @@ func startAgent() error {
 
 func stopAgent() error {
 	if detectionController == nil {
-		return errors.New("uninitialized misbehavior detection controller")
+		return errors.New("uninitialized detection controller")
 	}
 
 	if err := detectionController.Stop(); err != nil {
-		return errors.WithMessage(err, "stop misbehavior detection controller")
+		return errors.WithMessage(err, "stop detection controller")
 	}
 
 	return nil

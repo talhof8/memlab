@@ -3,6 +3,7 @@ package detection
 import (
 	"context"
 	"github.com/memlab/agent/internal/detection/detectors"
+	"github.com/memlab/agent/internal/detection/requests"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"sync"
@@ -39,12 +40,17 @@ func NewController(rootLogger *zap.Logger, maxConcurrentDetectors int) (*Control
 	}, nil
 }
 
-func (c *Controller) AddDetector(detectorType detectors.DetectorType, start bool, monitorPid uint32) error {
+func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, start bool) error {
+	detectorType, err := c.detectorType(detectionRequest)
+	if err != nil {
+		return err
+	}
+
 	detectorName := detectorType.Name()
 
 	c.logger.Debug("Add detector", zap.String("DetectorName", detectorName))
 
-	detector, err := detectors.NewDetector(detectorType, c.context, c.logger, monitorPid)
+	detector, err := detectors.NewDetector(detectorType, c.context, c.logger, detectionRequest)
 	if err != nil {
 		return errors.WithMessage(err, "new detector")
 	}
@@ -71,7 +77,13 @@ func (c *Controller) AddDetector(detectorType detectors.DetectorType, start bool
 	return nil
 }
 
-func (c *Controller) RemoveDetector(detectorType detectors.DetectorType) error {
+
+func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest) error {
+	detectorType, err := c.detectorType(detectionRequest)
+	if err != nil {
+		return err
+	}
+
 	detectorName := detectorType.Name()
 
 	c.logger.Debug("Remove detector", zap.String("DetectorName", detectorName))
@@ -98,6 +110,19 @@ func (c *Controller) RemoveDetector(detectorType detectors.DetectorType) error {
 	delete(c.detectors, detectorName)
 
 	return nil
+}
+
+func (c *Controller) detectorType(detectionRequest requests.DetectionRequest) (detectors.DetectorType, error) {
+	var detectorType detectors.DetectorType
+
+	switch detectionRequest.RequestType() {
+	case requests.RequestTypeDetectSignals:
+		detectorType = detectors.DetectorTypeSignals
+	default:
+		return 0, errors.Errorf("invalid detector type for request type '%d'", detectionRequest.RequestType())
+	}
+
+	return detectorType, nil
 }
 
 func (c *Controller) Start() error {

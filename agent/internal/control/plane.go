@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"github.com/denisbrodbeck/machineid"
 	"github.com/memlab/agent/internal/control/client"
+	"github.com/memlab/agent/internal/control/client/responses"
 	"github.com/memlab/agent/internal/control/messages"
-	"github.com/memlab/agent/internal/control/responses"
+	"github.com/memlab/agent/internal/detection"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"io/ioutil"
@@ -17,59 +18,53 @@ import (
 )
 
 const (
-	endpointHosts     = "hosts"
-	endpointProcesses = "processes"
+	endpointHosts            = "hosts"
+	endpointProcesses        = "processes"
+	endpointDetectionConfigs = "detection_configs"
 )
 
-type PlaneConfig struct {
-	ApiConfig                 *client.ApiConfig
-	HostStatusReportInterval  time.Duration
-	ProcessListReportInterval time.Duration
-}
-
-func (pc *PlaneConfig) Valid() (bool, error) {
-	if pc.HostStatusReportInterval <= 0 {
-		return false, errors.New("uninitialized host status report interval")
-	} else if pc.ProcessListReportInterval <= 0 {
-		return false, errors.New("uninitialized process list report interval")
-	}
-
-	return true, nil
-}
-
 type Plane struct {
-	logger    *zap.Logger
-	context   context.Context
-	cancel    context.CancelFunc
-	waitGroup sync.WaitGroup
-	client    *client.RestfulClient
-	config    *PlaneConfig
-	machineId string
+	logger                   *zap.Logger
+	context                  context.Context
+	cancel                   context.CancelFunc
+	waitGroup                sync.WaitGroup
+	client                   *client.RestfulClient
+	config                   *PlaneConfig
+	state                    *State
+	detectionRequestsHandler *DetectionRequestsHandler
+	machineId                string
 }
 
-func NewPlane(ctx context.Context, rootLogger *zap.Logger, config *PlaneConfig) (*Plane, error) {
+func NewPlane(rootLogger *zap.Logger, config *PlaneConfig,
+	detectionController *detection.Controller) (*Plane, error) {
 	if valid, err := config.Valid(); !valid {
 		return nil, errors.WithMessage(err, "validate control plane config")
 	}
 
 	logger := rootLogger.Named("control-plane")
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
+
 	restfulClient, err := client.NewRestfulClient(ctx, logger, config.ApiConfig)
 	if err != nil {
 		return nil, errors.WithMessage(err, "new restful client")
 	}
 
-	machineId, err := machineid.ID() // todo: find a fallback on error
+	machineId, err := machineid.ID() // todo: find a fallback on error (should be a constant identifier)
 	if err != nil {
 		return nil, errors.WithMessage(err, "get machine id")
 	}
 
+	state := NewState()
+	detectionRequestsHandler := NewDetectionRequestsHandler(detectionController)
+
 	return &Plane{
-		context:   ctx,
-		cancel:    cancel,
-		client:    restfulClient,
-		config:    config,
-		machineId: machineId,
+		context:                  ctx,
+		cancel:                   cancel,
+		client:                   restfulClient,
+		config:                   config,
+		state:                    state,
+		detectionRequestsHandler: detectionRequestsHandler,
+		machineId:                machineId,
 	}, nil
 }
 
@@ -77,15 +72,31 @@ func (p *Plane) Start() error {
 	p.logger.Debug("Start control plane")
 
 	p.waitGroup.Add(1)
+	go p.startDetectionRequestsHandler()
+
+	p.waitGroup.Add(1)
+	go p.handleDetectionRequests()
+
+	p.waitGroup.Add(1)
+	go p.fetchDetectionConfigs()
+
+	p.waitGroup.Add(1)
 	go p.reportHostStatus()
 
 	p.waitGroup.Add(1)
 	go p.reportProcessList()
 
-	p.waitGroup.Add(1)
-	go p.subscribeToMonitorCommands()
-
 	return nil
+}
+
+func (p *Plane) startDetectionRequestsHandler() {
+	defer p.waitGroup.Done()
+
+	if err := p.detectionRequestsHandler.Start(); err != nil {
+		p.logger.Error("Failed to start detection requests handler", zap.Error(err))
+		p.cancel()
+	}
+	p.detectionRequestsHandler.WaitUntilCompletion()
 }
 
 func (p *Plane) reportHostStatus() {
@@ -125,12 +136,7 @@ func (p *Plane) reportProcessList() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			backendProcesses, success := p.fetchProcessListFromBackend()
-			if !success {
-				continue
-			}
-
-			message, err := messages.NewProcessListReport(p.machineId, backendProcesses)
+			message, err := messages.NewProcessListReport()
 			if err != nil {
 				p.logger.Error("Failed to create process list report", zap.Error(err))
 				continue
@@ -147,12 +153,75 @@ func (p *Plane) reportProcessList() {
 	}
 }
 
-func (p *Plane) fetchProcessListFromBackend() (map[int32]*responses.Process, bool) {
-	endpoint := fmt.Sprintf("%s/by_machine/%s/", endpointProcesses, p.machineId)
+func (p *Plane) fetchDetectionConfigs() {
+	defer p.waitGroup.Done()
 
+	// todo: use websockets instead of polling
+
+	ticker := time.NewTicker(p.config.DetectionConfigurationsPollingInterval)
+	for {
+		select {
+		case <-p.context.Done():
+			ticker.Stop()
+			return
+		case <-ticker.C:
+			detectionConfigs, success := p.fetchDetectionConfigsFromBackend()
+			if !success {
+				continue
+			}
+
+			p.state.UpdateDetectionConfigsCache(detectionConfigs)
+		}
+	}
+}
+
+func (p *Plane) handleDetectionRequests() {
+	defer p.waitGroup.Done()
+
+	for {
+		select {
+		case <-p.context.Done():
+			return
+		case detectionRequest, ok := <-p.state.DetectionRequests():
+			if !ok {
+				p.logger.Error("Detection requests channel was closed unexpectedly")
+				p.cancel()
+				return // todo: re-open instead of returning?
+			}
+
+			if err := p.detectionRequestsHandler.Handle(detectionRequest); err != nil {
+				p.logger.Error("Failed to handle detection request", zap.Error(err),
+					zap.Int("RequestType", detectionRequest.RequestType()))
+			}
+		}
+	}
+}
+
+func (p *Plane) fetchDetectionConfigsFromBackend() (map[uint32]*responses.DetectionConfiguration, bool) {
+	endpoint := fmt.Sprintf("%s/by_machine/%s/", endpointDetectionConfigs, p.machineId)
+	bodyBytes, success := p.fetchFromBackend(endpoint)
+	if !success {
+		return nil, false
+	}
+
+	configList := make([]*responses.DetectionConfiguration, 0)
+	if err := json.Unmarshal(bodyBytes, &configList); err != nil {
+		p.logger.Error("Failed to parse http response body", zap.Error(err))
+		return nil, false
+	}
+
+	configs := make(map[uint32]*responses.DetectionConfiguration, len(configList))
+	for _, detectionConfiguration := range configList {
+		configs[detectionConfiguration.Pid] = detectionConfiguration
+	}
+
+	return configs, true
+}
+
+func (p *Plane) fetchFromBackend(endpoint string) ([]byte, bool) {
 	httpResponse, err := p.client.Get(endpoint, nil)
 	if err != nil {
-		p.logger.Error("Failed to list processes", zap.Error(err))
+		p.logger.Error("Failed to fetch data from backend", zap.Error(err))
 		return nil, false
 	} else if valid := p.validateResponse(httpResponse, http.StatusOK); !valid {
 		return nil, false
@@ -169,18 +238,7 @@ func (p *Plane) fetchProcessListFromBackend() (map[int32]*responses.Process, boo
 		p.logger.Error("Failed to read http response body", zap.Error(err))
 		return nil, false
 	}
-
-	processesList := make([]*responses.Process, 0)
-	if err := json.Unmarshal(bodyBytes, &processesList); err != nil {
-		p.logger.Error("Failed to parse http response body", zap.Error(err))
-		return nil, false
-	}
-
-	processes := make(map[int32]*responses.Process, len(processesList))
-	for _, process := range processesList {
-		processes[process.Pid] = process
-	}
-	return processes, true
+	return bodyBytes, true
 }
 
 func (p *Plane) validateResponse(response *http.Response, desiredStatus int) bool {
@@ -192,14 +250,8 @@ func (p *Plane) validateResponse(response *http.Response, desiredStatus int) boo
 	return true
 }
 
-func (p *Plane) subscribeToMonitorCommands() {
-	defer p.waitGroup.Done()
-
-	// todo: use websockets instead
-}
-
-func (p *Plane) SendProcessStatus() error {
-	return nil
+func (p *Plane) ReportProcessEvent() error {
+	return nil // todo: implement
 }
 
 func (p *Plane) WaitUntilCompletion() {
@@ -208,6 +260,11 @@ func (p *Plane) WaitUntilCompletion() {
 
 func (p *Plane) Stop() error {
 	p.logger.Debug("Stop control plane")
+
+	if err := p.detectionRequestsHandler.Stop(); err != nil {
+		return errors.WithMessage(err, "stop detection requests handler")
+	}
+
 	p.cancel()
 	return nil
 }
