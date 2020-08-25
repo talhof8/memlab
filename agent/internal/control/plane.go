@@ -35,8 +35,7 @@ type Plane struct {
 	machineId                string
 }
 
-func NewPlane(rootLogger *zap.Logger, config *PlaneConfig,
-	detectionController *detection.Controller) (*Plane, error) {
+func NewPlane(rootLogger *zap.Logger, config *PlaneConfig, detectionController *detection.Controller) (*Plane, error) {
 	if valid, err := config.Valid(); !valid {
 		return nil, errors.WithMessage(err, "validate control plane config")
 	}

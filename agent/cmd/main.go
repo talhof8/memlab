@@ -4,22 +4,28 @@ import (
 	"fmt"
 	"github.com/jessevdk/go-flags"
 	"github.com/memlab/agent/internal/control"
+	"github.com/memlab/agent/internal/control/client"
 	"github.com/memlab/agent/internal/detection"
-	"github.com/memlab/agent/internal/detection/detectors"
 	"github.com/memlab/agent/internal/logging"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 var options struct {
 	MonitorPid             uint32 `short:"p" long:"monitor-pid" description:"Monitor PID"`
 	MaxConcurrentDetectors int    `short:"m" long:"max-detectors" description:"Max concurrent detectors" default:"10"`
 	Debug                  bool   `short:"d" long:"debug" description:"Debug mode"`
-	ApiUrl                 string `short:"u" long:"api-url" description:"Api URL"`     // todo: move to a config file.
-	ApiToken               string `short:"t" long:"api-token" description:"Api token"` // todo: move to a config file.
+
+	// todo: move below to a config file.
+	HostStatusReportInterval               time.Duration `short:"hri" long:"host-status-interval" description:"Host status report interval" default:"30s"`
+	ProcessListReportInterval              time.Duration `short:"pri" long:"process-list-interval" description:"Process list report interval" default:"5s"`
+	DetectionConfigurationsPollingInterval time.Duration `short:"dri" long:"detection-configs-interval" description:"Detection configurations polling interval" default:"5s"`
+	ApiUrl                                 string        `short:"u" long:"api-url" description:"Api URL"`
+	ApiToken                               string        `short:"t" long:"api-token" description:"Api token"`
 }
 
 const (
@@ -27,9 +33,9 @@ const (
 )
 
 var (
-	logger              *zap.Logger
+	logger       *zap.Logger
 	controlPlane *control.Plane
-	signalsChan         = make(chan os.Signal)
+	signalsChan  = make(chan os.Signal)
 )
 
 // todo: prettify code
@@ -72,28 +78,37 @@ func startAgent() error {
 		return errors.WithMessage(err, "new detection controller")
 	}
 
-	controlPlane, err = control.NewPlane(logger, detectionController)
+	apiConfig := &client.ApiConfig{
+		Url:   options.ApiUrl,
+		Token: options.ApiToken,
+	}
 
-	err = detectionController.AddDetector(detectors.DetectorTypeSignals, false, options.MonitorPid)
+	controlPlaneConfig := &control.PlaneConfig{
+		ApiConfig:                              apiConfig,
+		HostStatusReportInterval:               options.HostStatusReportInterval,
+		ProcessListReportInterval:              options.ProcessListReportInterval,
+		DetectionConfigurationsPollingInterval: options.DetectionConfigurationsPollingInterval,
+	}
+
+	controlPlane, err = control.NewPlane(logger, controlPlaneConfig, detectionController)
 	if err != nil {
-		return errors.WithMessagef(err, "adding detector '%s'", detectors.DetectorTypeSignals.Name())
+		return errors.WithMessage(err, "new control plane")
 	}
 
-	if err := detectionController.Start(); err != nil {
-		return errors.WithMessage(err, "start detection controller")
+	if err := controlPlane.Start(); err != nil {
+		return errors.WithMessage(err, "start control plane")
 	}
-
-	detectionController.WaitUntilCompletion()
+	controlPlane.WaitUntilCompletion()
 	return nil
 }
 
 func stopAgent() error {
-	if detectionController == nil {
-		return errors.New("uninitialized detection controller")
+	if controlPlane == nil {
+		return errors.New("uninitialized control plane")
 	}
 
-	if err := detectionController.Stop(); err != nil {
-		return errors.WithMessage(err, "stop detection controller")
+	if err := controlPlane.Stop(); err != nil {
+		return errors.WithMessage(err, "stop control plane")
 	}
 
 	return nil
