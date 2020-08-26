@@ -1,6 +1,7 @@
-package messages
+package general
 
 import (
+	"encoding/json"
 	"github.com/glendc/go-external-ip"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/host"
@@ -54,4 +55,12 @@ func NewHostStatusReport(machineId string) (*HostStatusReport, error) {
 	hostStatusReport.VirtualizationRole = hostInfo.VirtualizationRole
 
 	return hostStatusReport, nil
+}
+
+func (h *HostStatusReport) ReportName() string {
+	return "host-status-report"
+}
+
+func (h *HostStatusReport) DumpReport() ([]byte, error) {
+	return json.Marshal(h)
 }

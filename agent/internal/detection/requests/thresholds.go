@@ -1,13 +1,15 @@
 package requests
 
-type RequestDetectThresholds struct {
-	Pid                      uint32
+import "github.com/memlab/agent/internal/types"
+
+type DetectThresholds struct {
+	Pid                      types.Pid
 	CpuThreshold             int
 	MemoryThreshold          int
 	RestartOnCpuThreshold    bool
 	RestartOnMemoryThreshold bool
 }
 
-func (n *RequestDetectThresholds) RequestType() int {
+func (n *DetectThresholds) RequestType() int {
 	return RequestTypeDetectThresholds
 }

@@ -1,23 +1,28 @@
-package control
+package state
 
 import (
 	"github.com/memlab/agent/internal/control/client/responses"
 	"github.com/memlab/agent/internal/detection/requests"
+	"github.com/memlab/agent/internal/types"
 )
 
 type State struct {
-	detectionConfigsCache map[uint32]*responses.DetectionConfiguration
+	detectionConfigsCache map[types.Pid]*responses.DetectionConfiguration
 	detectionRequests     chan requests.DetectionRequest
 }
 
 func NewState() *State {
 	return &State{
-		detectionConfigsCache: make(map[uint32]*responses.DetectionConfiguration, 0),
+		detectionConfigsCache: make(map[types.Pid]*responses.DetectionConfiguration, 0),
 		detectionRequests:     make(chan requests.DetectionRequest, 0),
 	}
 }
 
-func (s *State) UpdateDetectionConfigsCache(configsFromBackend map[uint32]*responses.DetectionConfiguration) {
+func (s *State) DetectionRequests() <-chan requests.DetectionRequest {
+	return s.detectionRequests
+}
+
+func (s *State) AddDetectionConfigs(configsFromBackend map[types.Pid]*responses.DetectionConfiguration) {
 	for _, detectionConfig := range configsFromBackend {
 		pid := detectionConfig.Pid
 
@@ -76,7 +81,7 @@ func (s *State) dispatchDetectionRequests(newConfig, oldConfig *responses.Detect
 }
 
 func (s *State) sendSignalDetectionNotification(newConfig *responses.DetectionConfiguration) {
-	s.detectionRequests <- &requests.RequestDetectSignals{
+	s.detectionRequests <- &requests.DetectSignals{
 		Pid:      newConfig.Pid,
 		TurnedOn: true,
 		Restart:  newConfig.RestartOnSignal,
@@ -84,7 +89,7 @@ func (s *State) sendSignalDetectionNotification(newConfig *responses.DetectionCo
 }
 
 func (s *State) sendThresholdsDetectionNotification(newConfig *responses.DetectionConfiguration) {
-	s.detectionRequests <- &requests.RequestDetectThresholds{
+	s.detectionRequests <- &requests.DetectThresholds{
 		Pid:                      newConfig.Pid,
 		CpuThreshold:             newConfig.CpuThreshold,
 		MemoryThreshold:          newConfig.MemoryThreshold,
@@ -94,13 +99,9 @@ func (s *State) sendThresholdsDetectionNotification(newConfig *responses.Detecti
 }
 
 func (s *State) sendSuspectedHangsDetectionNotification(newConfig *responses.DetectionConfiguration) {
-	s.detectionRequests <- &requests.RequestDetectSuspectedHangs{
+	s.detectionRequests <- &requests.DetectSuspectedHangs{
 		Pid:      newConfig.Pid,
 		Duration: newConfig.SuspectedHangDuration,
 		Restart:  newConfig.RestartOnSuspectedHang,
 	}
-}
-
-func (s *State) DetectionRequests() <-chan requests.DetectionRequest {
-	return s.detectionRequests
 }

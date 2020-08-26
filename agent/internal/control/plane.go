@@ -7,8 +7,11 @@ import (
 	"github.com/denisbrodbeck/machineid"
 	"github.com/memlab/agent/internal/control/client"
 	"github.com/memlab/agent/internal/control/client/responses"
-	"github.com/memlab/agent/internal/control/messages"
 	"github.com/memlab/agent/internal/detection"
+	"github.com/memlab/agent/internal/reports"
+	generalReports "github.com/memlab/agent/internal/reports/general"
+	statePkg "github.com/memlab/agent/internal/state"
+	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"io/ioutil"
@@ -30,7 +33,7 @@ type Plane struct {
 	waitGroup                sync.WaitGroup
 	client                   *client.RestfulClient
 	config                   *PlaneConfig
-	state                    *State
+	state                    *statePkg.State
 	detectionRequestsHandler *DetectionRequestsHandler
 	machineId                string
 }
@@ -53,7 +56,7 @@ func NewPlane(rootLogger *zap.Logger, config *PlaneConfig, detectionController *
 		return nil, errors.WithMessage(err, "get machine id")
 	}
 
-	state := NewState()
+	state := statePkg.NewState()
 	detectionRequestsHandler := NewDetectionRequestsHandler(detectionController)
 
 	return &Plane{
@@ -108,18 +111,14 @@ func (p *Plane) reportHostStatus() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			message, err := messages.NewHostStatusReport(p.machineId)
+			report, err := generalReports.NewHostStatusReport(p.machineId)
 			if err != nil {
 				p.logger.Error("Failed to create host status report", zap.Error(err))
 				continue
 			}
 
-			response, err := p.client.Post(endpointHosts, message)
-			if err != nil {
-				p.logger.Error("Failed to send host status report", zap.Error(err))
-				continue
-			} else if valid := p.validateResponse(response, http.StatusCreated); !valid {
-				continue
+			if err := p.postReport(endpointHosts, report); err != nil {
+				p.logger.Error("Failed to post report", zap.Error(err))
 			}
 		}
 	}
@@ -135,21 +134,32 @@ func (p *Plane) reportProcessList() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			message, err := messages.NewProcessListReport()
+			report, err := generalReports.NewProcessListReport()
 			if err != nil {
 				p.logger.Error("Failed to create process list report", zap.Error(err))
 				continue
 			}
 
-			response, err := p.client.Post(endpointProcesses, message)
-			if err != nil {
-				p.logger.Error("Failed to send process list report", zap.Error(err))
-				continue
-			} else if valid := p.validateResponse(response, http.StatusCreated); !valid {
-				continue
+			if err := p.postReport(endpointProcesses, report); err != nil {
+				p.logger.Error("Failed to post report", zap.Error(err))
 			}
 		}
 	}
+}
+
+func (p *Plane) postReport(endpoint string, report reports.Report) error {
+	data, err := report.DumpReport()
+	if err != nil {
+		return errors.WithMessage(err, "dump report")
+	}
+
+	response, err := p.client.Post(endpoint, data)
+	if err != nil {
+		return err
+	}
+
+	_ = p.validateResponse(response, http.StatusCreated)
+	return nil
 }
 
 func (p *Plane) fetchDetectionConfigs() {
@@ -169,7 +179,7 @@ func (p *Plane) fetchDetectionConfigs() {
 				continue
 			}
 
-			p.state.UpdateDetectionConfigsCache(detectionConfigs)
+			p.state.AddDetectionConfigs(detectionConfigs)
 		}
 	}
 }
@@ -188,7 +198,7 @@ func (p *Plane) handleDetectionRequests() {
 				return // todo: re-open instead of returning?
 			}
 
-			if err := p.detectionRequestsHandler.Handle(detectionRequest); err != nil {
+			if err := p.detectionRequestsHandler.Handle(p.context, p.logger, detectionRequest); err != nil {
 				p.logger.Error("Failed to handle detection request", zap.Error(err),
 					zap.Int("RequestType", detectionRequest.RequestType()))
 			}
@@ -196,7 +206,7 @@ func (p *Plane) handleDetectionRequests() {
 	}
 }
 
-func (p *Plane) fetchDetectionConfigsFromBackend() (map[uint32]*responses.DetectionConfiguration, bool) {
+func (p *Plane) fetchDetectionConfigsFromBackend() (map[types.Pid]*responses.DetectionConfiguration, bool) {
 	endpoint := fmt.Sprintf("%s/by_machine/%s/", endpointDetectionConfigs, p.machineId)
 	bodyBytes, success := p.fetchFromBackend(endpoint)
 	if !success {
@@ -209,7 +219,7 @@ func (p *Plane) fetchDetectionConfigsFromBackend() (map[uint32]*responses.Detect
 		return nil, false
 	}
 
-	configs := make(map[uint32]*responses.DetectionConfiguration, len(configList))
+	configs := make(map[types.Pid]*responses.DetectionConfiguration, len(configList))
 	for _, detectionConfiguration := range configList {
 		configs[detectionConfiguration.Pid] = detectionConfiguration
 	}
@@ -218,7 +228,7 @@ func (p *Plane) fetchDetectionConfigsFromBackend() (map[uint32]*responses.Detect
 }
 
 func (p *Plane) fetchFromBackend(endpoint string) ([]byte, bool) {
-	httpResponse, err := p.client.Get(endpoint, nil)
+	httpResponse, err := p.client.Get(endpoint)
 	if err != nil {
 		p.logger.Error("Failed to fetch data from backend", zap.Error(err))
 		return nil, false

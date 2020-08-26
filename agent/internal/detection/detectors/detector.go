@@ -12,7 +12,7 @@ type Detector interface {
 	WaitUntilCompletion()
 	Running() bool
 	StopDetection() error
-	Name() string
+	DetectorName() string
 }
 
 type DetectorType int

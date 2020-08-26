@@ -77,7 +77,6 @@ func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, sta
 	return nil
 }
 
-
 func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest) error {
 	detectorType, err := c.detectorType(detectionRequest)
 	if err != nil {
@@ -152,7 +151,7 @@ func (c *Controller) startDetector(detector detectors.Detector) {
 	c.waitGroup.Add(1)
 
 	go func() {
-		funcLogger := c.logger.With(zap.String("DetectorName", detector.Name()))
+		funcLogger := c.logger.With(zap.String("DetectorName", detector.DetectorName()))
 		defer c.waitGroup.Done()
 		defer c.releaseDetectorsSemaphore()
 

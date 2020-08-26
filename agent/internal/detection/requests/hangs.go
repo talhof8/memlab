@@ -1,11 +1,13 @@
 package requests
 
-type RequestDetectSuspectedHangs struct {
-	Pid      uint32
+import "github.com/memlab/agent/internal/types"
+
+type DetectSuspectedHangs struct {
+	Pid      types.Pid
 	Duration uint64
 	Restart  bool
 }
 
-func (n *RequestDetectSuspectedHangs) RequestType() int {
+func (n *DetectSuspectedHangs) RequestType() int {
 	return RequestTypeDetectSuspectedHangs
 }

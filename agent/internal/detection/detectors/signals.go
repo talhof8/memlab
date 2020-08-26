@@ -26,13 +26,13 @@ type SignalDetector struct {
 	logger               *zap.Logger
 	kernelCommunicator   *kernelComm.Communicator
 	running              *atomic.Bool
-	detectSignalsRequest *requests.RequestDetectSignals
+	detectSignalsRequest *requests.DetectSignals
 	monitorPid           uint32
 }
 
 func newSignalDetector(detectorType DetectorType, ctx context.Context, rootLogger *zap.Logger,
 	detectionRequest requests.DetectionRequest) (*SignalDetector, error) {
-	detectSignalsRequest, ok := detectionRequest.(*requests.RequestDetectSignals)
+	detectSignalsRequest, ok := detectionRequest.(*requests.DetectSignals)
 	if !ok {
 		return nil, errors.New("failed to convert interface to detection request object")
 	}
@@ -213,6 +213,6 @@ func (kd *SignalDetector) StopDetection() error {
 	return nil
 }
 
-func (kd *SignalDetector) Name() string {
+func (kd *SignalDetector) DetectorName() string {
 	return kd.detectorType.Name()
 }

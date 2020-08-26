@@ -4,6 +4,7 @@ import (
 	stdLibErrors "errors"
 	"github.com/mdlayher/genetlink"
 	"github.com/mdlayher/netlink"
+	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"os"
@@ -64,8 +65,8 @@ func NewCommunicator(rootLogger *zap.Logger, recvFamilyName, sendFamilyName stri
 	}, nil
 }
 
-func (c *Communicator) WatchProcess(pid uint32) error {
-	c.logger.Debug("Watch process", zap.Uint32("PID", pid))
+func (c *Communicator) WatchProcess(pid types.Pid) error {
+	c.logger.Debug("Watch process", zap.Any("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionWatchProcess,
@@ -73,8 +74,8 @@ func (c *Communicator) WatchProcess(pid uint32) error {
 	return c.sendMonitorProcessMessage(CommandMonitorProcess, payload)
 }
 
-func (c *Communicator) UnwatchProcess(pid uint32) error {
-	c.logger.Debug("Un-watch process", zap.Uint32("PID", pid))
+func (c *Communicator) UnwatchProcess(pid types.Pid) error {
+	c.logger.Debug("Un-watch process", zap.Any("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionUnwatchProcess,
@@ -82,8 +83,8 @@ func (c *Communicator) UnwatchProcess(pid uint32) error {
 	return c.sendMonitorProcessMessage(CommandMonitorProcess, payload)
 }
 
-func (c *Communicator) NotifyHandledSignal(pid uint32) error {
-	c.logger.Debug("Notify kernel that signal was handled", zap.Uint32("PID", pid))
+func (c *Communicator) NotifyHandledSignal(pid types.Pid) error {
+	c.logger.Debug("Notify kernel that signal was handled", zap.Any("PID", pid))
 	payload := &PayloadMonitorProcess{
 		Pid: pid,
 	}

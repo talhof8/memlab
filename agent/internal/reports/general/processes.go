@@ -1,13 +1,15 @@
-package messages
+package general
 
 import (
+	"encoding/json"
+	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	psUtil "github.com/shirou/gopsutil/process"
 	"time"
 )
 
-type SingleProcessReport struct {
-	Pid         uint32    `json:"pid"`
+type HostProcess struct {
+	Pid         types.Pid `json:"pid"`
 	Executable  string    `json:"executable"`
 	CommandLine string    `json:"command_line"`
 	CreateTime  time.Time `json:"create_time"`
@@ -15,15 +17,17 @@ type SingleProcessReport struct {
 	Status      string    `json:"status"`
 }
 
-type ProcessListReport = []*SingleProcessReport
+type ProcessListReport struct {
+	list []*HostProcess
+}
 
-func NewProcessListReport() (ProcessListReport, error) {
+func NewProcessListReport() (*ProcessListReport, error) {
 	liveProcesses, err := psUtil.Processes()
 	if err != nil {
 		return nil, errors.WithMessage(err, "get live process list")
 	}
 
-	report := make(ProcessListReport, 0, len(liveProcesses))
+	hostProcesses := make([]*HostProcess, 0, len(liveProcesses))
 
 	for _, liveProcess := range liveProcesses {
 		executable, err := liveProcess.Exe()
@@ -48,8 +52,8 @@ func NewProcessListReport() (ProcessListReport, error) {
 			return nil, errors.WithMessagef(err, "get status for pid '%d'", liveProcess.Pid)
 		}
 
-		singleProcessReport := &SingleProcessReport{
-			Pid:         uint32(liveProcess.Pid),
+		hostProcess := &HostProcess{
+			Pid:         types.Pid(liveProcess.Pid),
 			Executable:  executable,
 			CommandLine: cmdLine,
 			CreateTime:  createTime,
@@ -57,8 +61,16 @@ func NewProcessListReport() (ProcessListReport, error) {
 			Status:      status,
 		}
 
-		report = append(report, singleProcessReport)
+		hostProcesses = append(hostProcesses, hostProcess)
 	}
 
-	return report, nil
+	return &ProcessListReport{list: hostProcesses}, nil
+}
+
+func (p *ProcessListReport) ReportName() string {
+	return "process-list-report"
+}
+
+func (p *ProcessListReport) DumpReport() ([]byte, error) {
+	return json.Marshal(p.list)
 }

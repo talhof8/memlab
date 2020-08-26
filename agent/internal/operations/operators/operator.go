@@ -1,9 +1,13 @@
 package operators
 
-import "context"
+import (
+	"context"
+	"github.com/memlab/agent/internal/reports"
+	"github.com/memlab/agent/internal/types"
+)
 
 type Operator interface {
-	Name() string
-	Operate(ctx context.Context) error
-	StopOnFailure() bool
+	OperatorName() string
+	Operate(ctx context.Context, pid types.Pid) (reports.Report, error)
+	FailPipelineOnError() bool
 }

@@ -1,9 +1,12 @@
 package responses
 
-import "time"
+import (
+	"github.com/memlab/agent/internal/types"
+	"time"
+)
 
 type DetectionConfiguration struct {
-	Pid                      uint32    `json:"pid"`
+	Pid                      types.Pid `json:"pid"`
 	CreatedAt                time.Time `json:"created_at"`
 	ModifiedAt               time.Time `json:"modified_at"`
 	DetectSignals            bool      `json:"detect_signals"`

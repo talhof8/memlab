@@ -44,10 +44,10 @@ func (p *Pipeline) runOperators() error {
 	for _, operator := range p.operators {
 		err := operator.Operate(p.context)
 		if err != nil {
-			p.logger.Error("Operator failed", zap.String("Name", operator.Name()),
-				zap.Bool("StopOnFailure", operator.StopOnFailure()), zap.Error(err))
+			p.logger.Error("Operator failed", zap.String("OperatorName", operator.OperatorName()),
+				zap.Bool("FailPipelineOnError", operator.FailPipelineOnError()), zap.Error(err))
 
-			if operator.StopOnFailure() {
+			if operator.FailPipelineOnError() {
 				return ErrOperatorFailure
 			}
 		}

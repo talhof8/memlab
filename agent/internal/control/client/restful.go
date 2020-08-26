@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -66,32 +65,27 @@ func NewRestfulClient(ctx context.Context, rootLogger *zap.Logger, apiConfig *Ap
 	}, nil
 }
 
-func (rc *RestfulClient) Get(endpoint string, message interface{}) (*http.Response, error) {
-	return rc.doRequest(http.MethodGet, endpoint, message)
+func (rc *RestfulClient) Get(endpoint string) (*http.Response, error) {
+	return rc.doRequest(http.MethodGet, endpoint, nil)
 }
 
-func (rc *RestfulClient) Post(endpoint string, message interface{}) (*http.Response, error) {
+func (rc *RestfulClient) Post(endpoint string, message []byte) (*http.Response, error) {
 	return rc.doRequest(http.MethodPost, endpoint, message)
 }
 
-func (rc *RestfulClient) Delete(endpoint string, message interface{}) (*http.Response, error) {
+func (rc *RestfulClient) Delete(endpoint string, message []byte) (*http.Response, error) {
 	return rc.doRequest(http.MethodDelete, endpoint, message)
 }
 
-func (rc *RestfulClient) Put(endpoint string, message interface{}) (*http.Response, error) {
+func (rc *RestfulClient) Put(endpoint string, message []byte) (*http.Response, error) {
 	return rc.doRequest(http.MethodPut, endpoint, message)
 }
 
-func (rc *RestfulClient) doRequest(method string, endpoint string, message interface{}) (*http.Response, error) {
-	data, err := json.Marshal(message)
-	if err != nil {
-		return nil, errors.WithMessage(err, "marshal message")
-	}
-
+func (rc *RestfulClient) doRequest(method string, endpoint string, message []byte) (*http.Response, error) {
 	// todo: Consider to use (carefully!!!) buffer pools for request and response buffers (perhaps use fasthttp).
 	// todo: Note that this requires a cautious and well-thought-of design, so we don't end up with a memory leak!
 	// todo: Might not be cost-effective considering the relatively small rate of http communication this agent performs.
-	requestBody := bytes.NewBuffer(data)
+	requestBody := bytes.NewBuffer(message)
 
 	url := fmt.Sprintf("%s/%s", rc.apiConfig.Url, trimUrlSeparatorSuffix(endpoint))
 	req, err := http.NewRequestWithContext(rc.context, method, url, requestBody)
