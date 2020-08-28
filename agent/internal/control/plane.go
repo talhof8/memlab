@@ -23,6 +23,7 @@ import (
 const (
 	endpointHosts            = "hosts"
 	endpointProcesses        = "processes"
+	endpointProcessEvents    = "process_events"
 	endpointDetectionConfigs = "detection_configs"
 )
 
@@ -73,6 +74,11 @@ func NewPlane(rootLogger *zap.Logger, config *PlaneConfig, detectionController *
 func (p *Plane) Start() error {
 	p.logger.Debug("Start control plane")
 
+	// Note: go routines spawning order is important to avoid races.
+
+	p.waitGroup.Add(1)
+	go p.reportProcessEvents()
+
 	p.waitGroup.Add(1)
 	go p.startDetectionRequestsHandler()
 
@@ -89,6 +95,36 @@ func (p *Plane) Start() error {
 	go p.reportProcessList()
 
 	return nil
+}
+
+func (p *Plane) reportProcessEvents() {
+	defer p.waitGroup.Done()
+
+	for {
+		mergedReportsChan := p.detectionRequestsHandler.detectionController.MergedReportsChan()
+
+		select {
+		case <-p.context.Done():
+			return
+		case mergedReport, ok := <-mergedReportsChan:
+			if !ok {
+				p.logger.Error("Merge reports channel was closed unexpectedly")
+				p.cancel()
+				return // todo: re-open instead of returning?
+			}
+
+			data, err := json.Marshal(mergedReport)
+			if err != nil {
+				p.logger.Error("Failed to marshal merged report", zap.Error(err), zap.Any("Event",
+					mergedReport))
+				continue
+			}
+
+			if err := p.post(endpointProcessEvents, data); err != nil {
+				p.logger.Error("Failed to post event", zap.Error(err))
+			}
+		}
+	}
 }
 
 func (p *Plane) startDetectionRequestsHandler() {
@@ -145,21 +181,6 @@ func (p *Plane) reportProcessList() {
 			}
 		}
 	}
-}
-
-func (p *Plane) postReport(endpoint string, report reports.Report) error {
-	data, err := report.DumpReport()
-	if err != nil {
-		return errors.WithMessage(err, "dump report")
-	}
-
-	response, err := p.client.Post(endpoint, data)
-	if err != nil {
-		return err
-	}
-
-	_ = p.validateResponse(response, http.StatusCreated)
-	return nil
 }
 
 func (p *Plane) fetchDetectionConfigs() {
@@ -250,6 +271,28 @@ func (p *Plane) fetchFromBackend(endpoint string) ([]byte, bool) {
 	return bodyBytes, true
 }
 
+func (p *Plane) postReport(endpoint string, report reports.Report) error {
+	data, err := report.DumpReport()
+	if err != nil {
+		return errors.WithMessage(err, "dump report")
+	}
+
+	if err := p.post(endpoint, data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *Plane) post(endpoint string, data []byte) error {
+	response, err := p.client.Post(endpoint, data)
+	if err != nil {
+		return err
+	}
+
+	_ = p.validateResponse(response, http.StatusCreated)
+	return nil
+}
+
 func (p *Plane) validateResponse(response *http.Response, desiredStatus int) bool {
 	if response.StatusCode != desiredStatus {
 		p.logger.Warn("Got a bad status code", zap.Int("Got", response.StatusCode),
@@ -257,10 +300,6 @@ func (p *Plane) validateResponse(response *http.Response, desiredStatus int) boo
 		return false
 	}
 	return true
-}
-
-func (p *Plane) ReportProcessEvent() error {
-	return nil // todo: implement
 }
 
 func (p *Plane) WaitUntilCompletion() {
