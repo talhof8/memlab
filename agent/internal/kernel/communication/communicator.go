@@ -4,7 +4,6 @@ import (
 	stdLibErrors "errors"
 	"github.com/mdlayher/genetlink"
 	"github.com/mdlayher/netlink"
-	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"os"
@@ -15,13 +14,13 @@ import (
 // todo: find a better way of communicating than creating two separate generic-netlink families
 
 type Communicator struct {
-	logger         *zap.Logger
-	waitGroup      sync.WaitGroup
-	sendConn       *genetlink.Conn
-	recvConn       *genetlink.Conn
-	sendConnFamily *genetlink.Family
-	recvConnFamily *genetlink.Family
-	caughtSignals  chan *PayloadCaughtSignal
+	logger            *zap.Logger
+	waitGroup         sync.WaitGroup
+	sendConn          *genetlink.Conn
+	recvConn          *genetlink.Conn
+	sendConnFamily    *genetlink.Family
+	recvConnFamily    *genetlink.Family
+	caughtSignalsChan chan *PayloadCaughtSignal
 }
 
 func connectToGenericNetlink(familyName string) (*genetlink.Conn, *genetlink.Family, error) {
@@ -56,17 +55,17 @@ func NewCommunicator(rootLogger *zap.Logger, recvFamilyName, sendFamilyName stri
 	logger := rootLogger.Named("kernel-communicator")
 
 	return &Communicator{
-		logger:         logger,
-		sendConn:       sendConn,
-		sendConnFamily: sendConnFamily,
-		recvConn:       recvConn,
-		recvConnFamily: recvConnFamily,
-		caughtSignals:  make(chan *PayloadCaughtSignal, 0),
+		logger:            logger,
+		sendConn:          sendConn,
+		sendConnFamily:    sendConnFamily,
+		recvConn:          recvConn,
+		recvConnFamily:    recvConnFamily,
+		caughtSignalsChan: make(chan *PayloadCaughtSignal, 0),
 	}, nil
 }
 
-func (c *Communicator) WatchProcess(pid types.Pid) error {
-	c.logger.Debug("Watch process", zap.Any("PID", pid))
+func (c *Communicator) WatchProcess(pid uint32) error {
+	c.logger.Debug("Watch process", zap.Uint32("Pid", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionWatchProcess,
@@ -74,8 +73,8 @@ func (c *Communicator) WatchProcess(pid types.Pid) error {
 	return c.sendMonitorProcessMessage(CommandMonitorProcess, payload)
 }
 
-func (c *Communicator) UnwatchProcess(pid types.Pid) error {
-	c.logger.Debug("Un-watch process", zap.Any("PID", pid))
+func (c *Communicator) UnwatchProcess(pid uint32) error {
+	c.logger.Debug("Un-watch process", zap.Uint32("Pid", pid))
 	payload := &PayloadMonitorProcess{
 		Pid:   pid,
 		Watch: ActionUnwatchProcess,
@@ -83,8 +82,8 @@ func (c *Communicator) UnwatchProcess(pid types.Pid) error {
 	return c.sendMonitorProcessMessage(CommandMonitorProcess, payload)
 }
 
-func (c *Communicator) NotifyHandledSignal(pid types.Pid) error {
-	c.logger.Debug("Notify kernel that signal was handled", zap.Any("PID", pid))
+func (c *Communicator) NotifyHandledSignal(pid uint32) error {
+	c.logger.Debug("Notify kernel that signal was handled", zap.Uint32("Pid", pid))
 	payload := &PayloadMonitorProcess{
 		Pid: pid,
 	}
@@ -123,6 +122,7 @@ func (c *Communicator) ListenForCaughtSignals() error {
 
 		c.logger.Debug("Listen for netlink messages")
 		defer c.logger.Debug("Done listen for netlink messages")
+		defer close(c.caughtSignalsChan)
 
 		for {
 			messages, _, err := c.recvConn.Receive()
@@ -180,12 +180,12 @@ func (c *Communicator) handleMessages(messages []genetlink.Message) {
 			continue
 		}
 
-		c.caughtSignals <- caughtSignalPayload
+		c.caughtSignalsChan <- caughtSignalPayload
 	}
 }
 
-func (c *Communicator) CaughtSignals() <-chan *PayloadCaughtSignal {
-	return c.caughtSignals
+func (c *Communicator) CaughtSignalsChan() <-chan *PayloadCaughtSignal {
+	return c.caughtSignalsChan
 }
 
 // todo: think how to restore/clean state when kernel module keeps running and agent stops and vice-versa
@@ -198,7 +198,7 @@ func (c *Communicator) Close() error {
 		return errors.WithMessage(err, "close netlink connection")
 	}
 
-	close(c.caughtSignals)
+	close(c.caughtSignalsChan)
 
 	c.waitGroup.Wait()
 	return nil

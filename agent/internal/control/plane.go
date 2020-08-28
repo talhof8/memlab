@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/denisbrodbeck/machineid"
 	"github.com/memlab/agent/internal/control/client"
 	"github.com/memlab/agent/internal/control/client/responses"
 	"github.com/memlab/agent/internal/detection"
+	"github.com/memlab/agent/internal/host"
 	"github.com/memlab/agent/internal/reports"
 	generalReports "github.com/memlab/agent/internal/reports/general"
 	statePkg "github.com/memlab/agent/internal/state"
@@ -51,9 +51,9 @@ func NewPlane(rootLogger *zap.Logger, config *PlaneConfig, detectionController *
 		return nil, errors.WithMessage(err, "new restful client")
 	}
 
-	machineId, err := machineid.ID() // todo: find a fallback on error (should be a constant identifier)
+	machineId, err := host.MachineId()
 	if err != nil {
-		return nil, errors.WithMessage(err, "get machine id")
+		return nil, err
 	}
 
 	state := statePkg.NewState()
@@ -191,7 +191,7 @@ func (p *Plane) handleDetectionRequests() {
 		select {
 		case <-p.context.Done():
 			return
-		case detectionRequest, ok := <-p.state.DetectionRequests():
+		case detectionRequest, ok := <-p.state.DetectionRequestsChan():
 			if !ok {
 				p.logger.Error("Detection requests channel was closed unexpectedly")
 				p.cancel()

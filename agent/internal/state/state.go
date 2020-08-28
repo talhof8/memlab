@@ -8,18 +8,18 @@ import (
 
 type State struct {
 	detectionConfigsCache map[types.Pid]*responses.DetectionConfiguration
-	detectionRequests     chan requests.DetectionRequest
+	detectionRequestsChan chan requests.DetectionRequest
 }
 
 func NewState() *State {
 	return &State{
 		detectionConfigsCache: make(map[types.Pid]*responses.DetectionConfiguration, 0),
-		detectionRequests:     make(chan requests.DetectionRequest, 0),
+		detectionRequestsChan: make(chan requests.DetectionRequest, 0),
 	}
 }
 
-func (s *State) DetectionRequests() <-chan requests.DetectionRequest {
-	return s.detectionRequests
+func (s *State) DetectionRequestsChan() <-chan requests.DetectionRequest {
+	return s.detectionRequestsChan
 }
 
 func (s *State) AddDetectionConfigs(configsFromBackend map[types.Pid]*responses.DetectionConfiguration) {
@@ -81,7 +81,7 @@ func (s *State) dispatchDetectionRequests(newConfig, oldConfig *responses.Detect
 }
 
 func (s *State) sendSignalDetectionNotification(newConfig *responses.DetectionConfiguration) {
-	s.detectionRequests <- &requests.DetectSignals{
+	s.detectionRequestsChan <- &requests.DetectSignals{
 		Pid:      newConfig.Pid,
 		TurnedOn: true,
 		Restart:  newConfig.RestartOnSignal,
@@ -89,7 +89,7 @@ func (s *State) sendSignalDetectionNotification(newConfig *responses.DetectionCo
 }
 
 func (s *State) sendThresholdsDetectionNotification(newConfig *responses.DetectionConfiguration) {
-	s.detectionRequests <- &requests.DetectThresholds{
+	s.detectionRequestsChan <- &requests.DetectThresholds{
 		Pid:                      newConfig.Pid,
 		CpuThreshold:             newConfig.CpuThreshold,
 		MemoryThreshold:          newConfig.MemoryThreshold,
@@ -99,7 +99,7 @@ func (s *State) sendThresholdsDetectionNotification(newConfig *responses.Detecti
 }
 
 func (s *State) sendSuspectedHangsDetectionNotification(newConfig *responses.DetectionConfiguration) {
-	s.detectionRequests <- &requests.DetectSuspectedHangs{
+	s.detectionRequestsChan <- &requests.DetectSuspectedHangs{
 		Pid:      newConfig.Pid,
 		Duration: newConfig.SuspectedHangDuration,
 		Restart:  newConfig.RestartOnSuspectedHang,

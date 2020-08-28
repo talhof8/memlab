@@ -3,16 +3,19 @@ package detectors
 import (
 	"context"
 	"github.com/memlab/agent/internal/detection/requests"
+	"github.com/memlab/agent/internal/operations/operators"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 type Detector interface {
 	StartDetectionLoop() error
+	StopDetection() error
 	WaitUntilCompletion()
 	Running() bool
-	StopDetection() error
 	DetectorName() string
+	Operators() []operators.Operator
+	MergedReportsChan() <-chan map[string]interface{}
 }
 
 type DetectorType int
@@ -23,7 +26,7 @@ const (
 
 var (
 	detectorNames = map[DetectorType]string{
-		DetectorTypeSignals: "Signal Detector",
+		DetectorTypeSignals: "signal-detector",
 	}
 )
 
@@ -36,10 +39,10 @@ func (dt DetectorType) Name() string {
 }
 
 func NewDetector(detectorType DetectorType, ctx context.Context, rootLogger *zap.Logger,
-	detectionRequest requests.DetectionRequest) (Detector, error) {
+	detectionRequest requests.DetectionRequest, detectionOperators []operators.Operator) (Detector, error) {
 	switch detectorType {
 	case DetectorTypeSignals:
-		return newSignalDetector(detectorType, ctx, rootLogger, detectionRequest)
+		return newSignalDetector(detectorType, ctx, rootLogger, detectionRequest, detectionOperators)
 	default:
 		return nil, errors.Errorf("unknown detector type '%d'", detectorType)
 	}

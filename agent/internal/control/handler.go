@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/memlab/agent/internal/detection"
 	"github.com/memlab/agent/internal/detection/requests"
-	"github.com/memlab/agent/internal/operations"
 	operatorsPkg "github.com/memlab/agent/internal/operations/operators"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -40,7 +39,9 @@ func (d *DetectionRequestsHandler) Handle(ctx context.Context, rootLogger *zap.L
 			return errFailedToConvertInterface
 		}
 
-		detectionOperators := make()
+		detectionOperators = []operatorsPkg.Operator{
+			&operatorsPkg.CollectMetadata{},
+		}
 		addDetector = detectSignalsRequest.TurnedOn
 	default:
 		return errors.Errorf("invalid detector type for request type '%d'", detectionRequest.RequestType())
@@ -49,11 +50,7 @@ func (d *DetectionRequestsHandler) Handle(ctx context.Context, rootLogger *zap.L
 	if !addDetector {
 		return d.detectionController.RemoveDetector(detectionRequest)
 	}
-
-	detectionOperatorsPipeline := operations.NewPipeline(ctx, rootLogger)
-	detectionOperatorsPipeline.AddOperators(detectionOperators...)
-
-	return d.detectionController.AddDetector(detectionRequest, true)
+	return d.detectionController.AddDetector(detectionRequest, detectionOperators, true)
 }
 
 func (d *DetectionRequestsHandler) Stop() error {

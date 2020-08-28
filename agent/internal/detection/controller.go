@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/memlab/agent/internal/detection/detectors"
 	"github.com/memlab/agent/internal/detection/requests"
+	"github.com/memlab/agent/internal/operations/operators"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"sync"
@@ -25,6 +26,7 @@ type Controller struct {
 	detectors          map[string]detectors.Detector
 	lock               sync.RWMutex
 	detectorsSemaphore chan int
+	mergedReportsChan  chan map[string]interface{}
 }
 
 func NewController(rootLogger *zap.Logger, maxConcurrentDetectors int) (*Controller, error) {
@@ -37,10 +39,12 @@ func NewController(rootLogger *zap.Logger, maxConcurrentDetectors int) (*Control
 		cancel:             cancel,
 		detectors:          make(map[string]detectors.Detector, 0),
 		detectorsSemaphore: make(chan int, maxConcurrentDetectors),
+		mergedReportsChan:  make(chan map[string]interface{}, 0),
 	}, nil
 }
 
-func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, start bool) error {
+func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, detectionOperators []operators.Operator,
+	start bool) error {
 	detectorType, err := c.detectorType(detectionRequest)
 	if err != nil {
 		return err
@@ -50,7 +54,7 @@ func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, sta
 
 	c.logger.Debug("Add detector", zap.String("DetectorName", detectorName))
 
-	detector, err := detectors.NewDetector(detectorType, c.context, c.logger, detectionRequest)
+	detector, err := detectors.NewDetector(detectorType, c.context, c.logger, detectionRequest, detectionOperators)
 	if err != nil {
 		return errors.WithMessage(err, "new detector")
 	}
@@ -158,6 +162,10 @@ func (c *Controller) startDetector(detector detectors.Detector) {
 		funcLogger.Debug("Start detection loop")
 		defer funcLogger.Debug("Done detection loop")
 
+		// Spawn before starting detection to avoid races.
+		c.waitGroup.Add(1)
+		go c.mergeDetectorReportsChan(detector)
+
 		err := detector.StartDetectionLoop()
 		if err != nil {
 			funcLogger.Error("Failed to start detection for detector", zap.Error(err))
@@ -168,6 +176,23 @@ func (c *Controller) startDetector(detector detectors.Detector) {
 	}()
 }
 
+func (c *Controller) mergeDetectorReportsChan(detector detectors.Detector) {
+	defer c.waitGroup.Done()
+
+	for {
+		select {
+		case <-c.context.Done():
+			close(c.mergedReportsChan)
+			return
+		case mergedReport, ok := <-detector.MergedReportsChan():
+			if !ok {
+				return
+			}
+			c.mergedReportsChan <- mergedReport
+		}
+	}
+}
+
 func (c *Controller) WaitUntilCompletion() {
 	c.waitGroup.Wait() // Block until all detectors are done.
 }
@@ -176,4 +201,8 @@ func (c *Controller) Stop() error {
 	c.logger.Debug("Stop detection controller")
 	c.cancel() // Will cancel all child-contexts passed to detectors.
 	return nil
+}
+
+func (c *Controller) MergedReportsChan() <-chan map[string]interface{} {
+	return c.mergedReportsChan
 }

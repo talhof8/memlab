@@ -25,7 +25,7 @@ func (c *CollectMetadata) Operate(ctx context.Context, pid types.Pid) (reports.R
 		return nil, err
 	}
 
-	return postdetection.NewMetadataReport(ps)
+	return postdetection.NewMetadataReport(pid, ps)
 }
 
 func (c *CollectMetadata) FailPipelineOnError() bool {

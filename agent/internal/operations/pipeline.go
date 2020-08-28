@@ -3,6 +3,8 @@ package operations
 import (
 	"context"
 	"github.com/memlab/agent/internal/operations/operators"
+	"github.com/memlab/agent/internal/reports"
+	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -16,7 +18,7 @@ type Pipeline struct {
 	operators []operators.Operator
 }
 
-func NewPipeline(ctx context.Context, rootLogger *zap.Logger) *Pipeline {
+func NewPipeline(ctx context.Context, rootLogger *zap.Logger, ops []operators.Operator) *Pipeline {
 	logger := rootLogger.Named("operations-pipeline")
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -24,7 +26,7 @@ func NewPipeline(ctx context.Context, rootLogger *zap.Logger) *Pipeline {
 		logger:    logger,
 		context:   ctx,
 		cancel:    cancel,
-		operators: make([]operators.Operator, 0),
+		operators: ops,
 	}
 }
 
@@ -32,31 +34,36 @@ func (p *Pipeline) AddOperators(ops ...operators.Operator) {
 	p.operators = append(p.operators, ops...)
 }
 
-func (p *Pipeline) Start() error {
-	if err := p.runOperators(); err != nil {
-		return err
+func (p *Pipeline) Start(pid types.Pid) (map[string]interface{}, error) {
+	mergedReportsDump, err := p.runOperators(pid)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	return mergedReportsDump, nil
 }
 
-func (p *Pipeline) runOperators() error {
+func (p *Pipeline) runOperators(pid types.Pid) (map[string]interface{}, error) {
+	allReports := make([]reports.Report, 0)
+
 	for _, operator := range p.operators {
-		err := operator.Operate(p.context)
+		report, err := operator.Operate(p.context, pid)
 		if err != nil {
 			p.logger.Error("Operator failed", zap.String("OperatorName", operator.OperatorName()),
 				zap.Bool("FailPipelineOnError", operator.FailPipelineOnError()), zap.Error(err))
 
 			if operator.FailPipelineOnError() {
-				return ErrOperatorFailure
+				return nil, ErrOperatorFailure
 			}
 		}
+
+		allReports = append(allReports, report)
 	}
 
-	return nil
+	return reports.MergeReports(allReports...)
 }
 
-func (p *Pipeline) Stop() error {
+func (p *Pipeline) Abort() error {
 	p.cancel()
 	return nil
 }
