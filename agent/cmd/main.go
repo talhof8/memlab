@@ -16,9 +16,8 @@ import (
 )
 
 var options struct {
-	MonitorPid             uint32 `short:"p" long:"monitor-pid" description:"Monitor PID"`
-	MaxConcurrentDetectors int    `short:"m" long:"max-detectors" description:"Max concurrent detectors" default:"10"`
-	Debug                  bool   `short:"d" long:"debug" description:"Debug mode"`
+	MaxConcurrentDetectors int  `short:"m" long:"max-detectors" description:"Max concurrent detectors" default:"5"`
+	Debug                  bool `short:"d" long:"debug" description:"Debug mode"`
 
 	// todo: move below to a config file.
 	HostStatusReportInterval               time.Duration `short:"hri" long:"host-status-interval" description:"Host status report interval" default:"30s"`
