@@ -20,9 +20,9 @@ var options struct {
 	Debug                  bool `short:"d" long:"debug" description:"Debug mode"`
 
 	// todo: move below to a config file.
-	HostStatusReportInterval               time.Duration `short:"hri" long:"host-status-interval" description:"Host status report interval" default:"30s"`
-	ProcessListReportInterval              time.Duration `short:"pri" long:"process-list-interval" description:"Process list report interval" default:"5s"`
-	DetectionConfigurationsPollingInterval time.Duration `short:"dri" long:"detection-configs-interval" description:"Detection configurations polling interval" default:"5s"`
+	HostStatusReportInterval               time.Duration `short:"s" long:"host-status-interval" description:"Host status report interval" default:"30s"`
+	ProcessListReportInterval              time.Duration `short:"p" long:"process-list-interval" description:"Process list report interval" default:"5s"`
+	DetectionConfigurationsPollingInterval time.Duration `short:"c" long:"detection-configs-interval" description:"Detection configurations polling interval" default:"5s"`
 	ApiUrl                                 string        `short:"u" long:"api-url" description:"Api URL"`
 	ApiToken                               string        `short:"t" long:"api-token" description:"Api token"`
 }
