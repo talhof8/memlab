@@ -109,8 +109,7 @@ int setup_hook(struct ftrace_hook *hook) {
     err = resolve_hooked_func_address(hook);
     if (err) {
         return err;
-    }
-
+    s
     hook->ops.func = ftrace_hook_callback;
     hook->ops.flags = FTRACE_OPS_FL_SAVE_REGS | FTRACE_OPS_FL_RECURSION_SAFE | FTRACE_OPS_FL_IPMODIFY;
 

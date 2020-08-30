@@ -76,7 +76,7 @@ class ProcessEvent(models.Model):
         (TYPE_NOT_FOUND, "Not found"),
     ]
 
-    id = models.UUIDFi  eld(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(account_models.User, on_delete=models.CASCADE)
     process = models.ForeignKey(Process, on_delete=models.CASCADE, null=False, blank=False)
     type = models.CharField(max_length=1, choices=TYPES, default=TYPE_SEEN)
