@@ -308,7 +308,7 @@ func (p *Plane) post(endpoint string, data []byte) error {
 		return err
 	}
 
-	_ = p.validateResponse(response, http.StatusCreated)
+	_ = p.validateResponse(response, http.StatusOK)
 	return nil
 }
 

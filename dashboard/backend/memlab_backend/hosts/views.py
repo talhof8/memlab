@@ -32,7 +32,7 @@ class HostViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
                                                        defaults=validated_data)
 
         data = serializer.to_representation(host)
-        return Response(data, status=status.HTTP_201_CREATED)
+        return Response(data, status=status.HTTP_200_OK)
 
     def get_serializer_context(self):
         return {'request': None}
@@ -70,7 +70,7 @@ class ProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Up
         except KeyError as e:
             raise ValidationError(e)
 
-        return Response(status=status.HTTP_201_CREATED)
+        return Response(status=status.HTTP_200_OK)
 
     def get_serializer_context(self):
         return {'request': None}

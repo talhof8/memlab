@@ -33,7 +33,7 @@ class CompanyViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Ge
         profile.save()
 
         data = serializer.to_representation(new_company)
-        return Response(data, status=status.HTTP_201_CREATED)
+        return Response(data, status=status.HTTP_200_OK)
 
     # todo: support user's company change
 
@@ -68,7 +68,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gener
         new_user.save()
 
         data = serializer.to_representation(new_user)
-        return Response(data, status=status.HTTP_201_CREATED)
+        return Response(data, status=status.HTTP_200_OK)
 
     def get_permissions(self):
         try:
@@ -125,6 +125,6 @@ class ProfileViewSet(viewsets.GenericViewSet):
         profile.save()
 
         data = serializer.to_representation(profile)
-        return Response(data, status=status.HTTP_201_CREATED)
+        return Response(data, status=status.HTTP_200_OK)
 
     # todo: support profile' updates (e.g: license)
