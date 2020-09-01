@@ -79,7 +79,7 @@ class ProcessEvent(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(account_models.User, on_delete=models.CASCADE)
+    user = models.ForeignKey(account_models.User, on_delete=models.CASCADE, null=False, blank=False)
     process = models.ForeignKey(Process, on_delete=models.CASCADE, null=False, blank=False)
     type = models.CharField(max_length=1, choices=TYPES, default=TYPE_SEEN)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -100,7 +100,7 @@ class ProcessEvent(models.Model):
 
 class DetectionConfig(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(account_models.User, on_delete=models.CASCADE)
+    user = models.ForeignKey(account_models.User, on_delete=models.CASCADE, null=False, blank=False)
     process = models.ForeignKey(Process, on_delete=models.CASCADE, null=False, blank=False)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)

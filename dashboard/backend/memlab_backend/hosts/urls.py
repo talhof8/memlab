@@ -5,8 +5,8 @@ from rest_framework import routers
 router = routers.DefaultRouter()
 router.register(r'hosts', views.HostViewSet, basename='host')
 router.register(r'processes', views.ProcessViewSet, basename='process')
-router.register(r'process_events', views.ProcessEventViewSet, basename='process_event')
-router.register(r'detection_configs', views.DetectionConfigViewSet, basename='detection_config')
+router.register(r'process_events', views.ProcessEventViewSet, basename='processevent')
+router.register(r'detection_configs', views.DetectionConfigViewSet, basename='detectionconfig')
 
 urlpatterns = [
     path('', include(router.urls)),

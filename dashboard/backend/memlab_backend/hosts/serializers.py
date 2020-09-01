@@ -52,18 +52,18 @@ class ProcessEventSerializer(serializers.HyperlinkedModelSerializer):
         read_only_fields = ["id", "user"]
 
 
-class DetectionConfigSerializer(serializers.HyperlinkedModelSerializer):
+class DetectionConfigSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField()
     pid = serializers.SerializerMethodField("get_pid")
     machine_id = serializers.SerializerMethodField("get_machine_id")
 
     class Meta:
         model = models.DetectionConfig
-        fields = "__all__"
-        read_only_fields = ["id", "user"]
+        read_only_fields = ["id"]
+        exclude = ["user", "process"]
 
     def get_pid(self, obj):
         return obj.process.pid
 
     def get_machine_id(self, obj):
-        return obj.process.machine_id
+        return obj.process.host.machine_id
