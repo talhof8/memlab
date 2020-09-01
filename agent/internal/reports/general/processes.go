@@ -6,6 +6,7 @@ import (
 	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	psUtil "github.com/shirou/gopsutil/process"
+	"os"
 	"time"
 )
 
@@ -34,6 +35,10 @@ func NewProcessListReport(machineId string) (*ProcessListReport, error) {
 	var errs error
 
 	for _, liveProcess := range liveProcesses {
+		if int(liveProcess.Pid) == os.Getpid() { // Do not report agent pid.
+			continue
+		}
+
 		executable, err := liveProcess.Exe()
 		if err != nil {
 			errs = multierror.Append(errs, errors.WithMessagef(err, "get executable for pid '%d'", liveProcess.Pid))
