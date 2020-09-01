@@ -241,6 +241,7 @@ func (p *Plane) handleDetectionRequests() {
 				return // todo: re-open instead of returning?
 			}
 
+			p.logger.Debug("New detection request", zap.Int("Type", detectionRequest.RequestType()))
 			if err := p.detectionRequestsHandler.Handle(p.context, p.logger, detectionRequest); err != nil {
 				p.logger.Error("Failed to handle detection request", zap.Error(err),
 					zap.Int("RequestType", detectionRequest.RequestType()))
