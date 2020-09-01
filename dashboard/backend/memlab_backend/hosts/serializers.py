@@ -13,12 +13,34 @@ class HostSerializer(serializers.ModelSerializer):
 
 class ProcessSerializer(serializers.HyperlinkedModelSerializer):
     id = serializers.ReadOnlyField()
-    machine_id = serializers.CharField()
 
     class Meta:
         model = models.Process
         fields = "__all__"
         read_only_fields = ["id", "user", "host"]
+
+
+class ProcessCreateSerializer(serializers.Serializer):
+    id = serializers.ReadOnlyField()
+    machine_id = serializers.CharField(max_length=models.Host.MACHINE_ID_LENGTH,
+                                       min_length=models.Host.MACHINE_ID_LENGTH)
+    processes = ProcessSerializer(many=True)
+
+    @classmethod
+    def many_init(cls, *args, **kwargs):
+        raise NotImplementedError()
+
+    def create(self, validated_data):
+        return NotImplementedError()
+
+    def update(self, instance, validated_data):
+        return NotImplementedError()
+
+    class Meta:
+        fields = "__all__"
+        extra_kwargs = {
+            "machine_id": {"write_only": True}
+        }
 
 
 class ProcessEventSerializer(serializers.HyperlinkedModelSerializer):

@@ -1,6 +1,7 @@
 package postdetection
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/memlab/agent/internal/host"
 	"github.com/memlab/agent/internal/types"
@@ -24,43 +25,43 @@ type MetadataReport struct {
 	Connections    []string  `json:"connections"`
 }
 
-func NewMetadataReport(pid types.Pid, ps *process.Process) (*MetadataReport, error) {
+func NewMetadataReport(ctx context.Context, pid types.Pid, ps *process.Process) (*MetadataReport, error) {
 	machineId, err := host.MachineId()
 	if err != nil {
 		return nil, err
 	}
 
-	executablePath, err := ps.Exe()
+	executablePath, err := ps.ExeWithContext(ctx)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get process' executable (pid: '%d')", pid)
 	}
 
-	cmdline, err := ps.Cmdline()
+	cmdline, err := ps.CmdlineWithContext(ctx)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get process' cmdline (pid: '%d')", pid)
 	}
 
-	cpuPercent, err := ps.CPUPercent()
+	cpuPercent, err := ps.CPUPercentWithContext(ctx)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get process' CPU percent (pid: '%d')", pid)
 	}
 
-	memPercent, err := ps.MemoryPercent()
+	memPercent, err := ps.MemoryPercentWithContext(ctx)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get process' memory percent (pid: '%d')", pid)
 	}
 
-	createTime, err := ps.CreateTime()
+	createTime, err := ps.CreateTimeWithContext(ctx)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get process' create time (pid: '%d')", pid)
 	}
 
-	cwd, err := ps.Cwd()
+	cwd, err := ps.CwdWithContext(ctx)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get process' cwd (pid: '%d')", pid)
 	}
 
-	connections, err := listConnections(ps)
+	connections, err := listConnections(ctx, ps)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get process' connections (pid: '%d')", pid)
 	}
@@ -78,8 +79,8 @@ func NewMetadataReport(pid types.Pid, ps *process.Process) (*MetadataReport, err
 	}, nil
 }
 
-func listConnections(ps *process.Process) ([]string, error) {
-	rawConnectionList, err := ps.ConnectionsMax(maxConnectionsLimit)
+func listConnections(ctx context.Context, ps *process.Process) ([]string, error) {
+	rawConnectionList, err := ps.ConnectionsMaxWithContext(ctx, maxConnectionsLimit)
 	if err != nil {
 		return nil, err
 	}

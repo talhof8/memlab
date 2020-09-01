@@ -28,15 +28,16 @@ const (
 )
 
 type Plane struct {
-	logger                   *zap.Logger
-	context                  context.Context
-	cancel                   context.CancelFunc
-	waitGroup                sync.WaitGroup
-	client                   *client.RestfulClient
-	config                   *PlaneConfig
-	state                    *statePkg.State
-	detectionRequestsHandler *DetectionRequestsHandler
-	machineId                string
+	logger                    *zap.Logger
+	context                   context.Context
+	cancel                    context.CancelFunc
+	waitGroup                 sync.WaitGroup
+	client                    *client.RestfulClient
+	config                    *PlaneConfig
+	state                     *statePkg.State
+	detectionRequestsHandler  *DetectionRequestsHandler
+	machineId                 string
+	initialHostStatusReported chan struct{}
 }
 
 func NewPlane(rootLogger *zap.Logger, config *PlaneConfig, detectionController *detection.Controller) (*Plane, error) {
@@ -61,13 +62,15 @@ func NewPlane(rootLogger *zap.Logger, config *PlaneConfig, detectionController *
 	detectionRequestsHandler := NewDetectionRequestsHandler(detectionController)
 
 	return &Plane{
-		context:                  ctx,
-		cancel:                   cancel,
-		client:                   restfulClient,
-		config:                   config,
-		state:                    state,
-		detectionRequestsHandler: detectionRequestsHandler,
-		machineId:                machineId,
+		logger:                    logger,
+		context:                   ctx,
+		cancel:                    cancel,
+		client:                    restfulClient,
+		config:                    config,
+		state:                     state,
+		detectionRequestsHandler:  detectionRequestsHandler,
+		machineId:                 machineId,
+		initialHostStatusReported: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -89,10 +92,10 @@ func (p *Plane) Start() error {
 	go p.fetchDetectionConfigs()
 
 	p.waitGroup.Add(1)
-	go p.reportHostStatus()
+	go p.startHostStatusReporter()
 
 	p.waitGroup.Add(1)
-	go p.reportProcessList()
+	go p.startProcessListReporter()
 
 	return nil
 }
@@ -137,31 +140,46 @@ func (p *Plane) startDetectionRequestsHandler() {
 	p.detectionRequestsHandler.WaitUntilCompletion()
 }
 
-func (p *Plane) reportHostStatus() {
+func (p *Plane) startHostStatusReporter() {
 	defer p.waitGroup.Done()
 
 	ticker := time.NewTicker(p.config.HostStatusReportInterval)
+
+	p.logger.Debug("Reporting host status (initial)")
+	p.reportHostStatus() // Report immediately at first call.
+	p.initialHostStatusReported <- struct{}{}
+
 	for {
 		select {
 		case <-p.context.Done():
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			report, err := generalReports.NewHostStatusReport(p.machineId)
-			if err != nil {
-				p.logger.Error("Failed to create host status report", zap.Error(err))
-				continue
-			}
-
-			if err := p.postReport(endpointHosts, report); err != nil {
-				p.logger.Error("Failed to post report", zap.Error(err))
-			}
+			p.logger.Debug("Reporting host status (recurring)")
+			p.reportHostStatus()
 		}
 	}
 }
 
-func (p *Plane) reportProcessList() {
+func (p *Plane) reportHostStatus() {
+	report, err := generalReports.NewHostStatusReport(p.machineId)
+	if err != nil {
+		p.logger.Error("Failed to create host status report", zap.Error(err))
+		return
+	}
+
+	if err := p.postReport(endpointHosts, report); err != nil {
+		p.logger.Error("Failed to post report", zap.Error(err))
+	}
+}
+
+func (p *Plane) startProcessListReporter() {
 	defer p.waitGroup.Done()
+
+	// Should only be reported after host info is sent to the backend.
+	<-p.initialHostStatusReported
+	p.logger.Debug("Reporting process list (initial)")
+	p.reportProcessList()
 
 	ticker := time.NewTicker(p.config.ProcessListReportInterval)
 	for {
@@ -170,16 +188,20 @@ func (p *Plane) reportProcessList() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			report, err := generalReports.NewProcessListReport()
-			if err != nil {
-				p.logger.Error("Failed to create process list report", zap.Error(err))
-				continue
-			}
-
-			if err := p.postReport(endpointProcesses, report); err != nil {
-				p.logger.Error("Failed to post report", zap.Error(err))
-			}
+			p.logger.Debug("Reporting process list (recurring)")
+			p.reportProcessList()
 		}
+	}
+}
+
+func (p *Plane) reportProcessList() {
+	report, err := generalReports.NewProcessListReport(p.machineId)
+	if err != nil {
+		p.logger.Error("Failed to create process list report", zap.Error(err))
+	}
+
+	if err := p.postReport(endpointProcesses, report); err != nil {
+		p.logger.Error("Failed to post report", zap.Error(err))
 	}
 }
 
@@ -274,13 +296,10 @@ func (p *Plane) fetchFromBackend(endpoint string) ([]byte, bool) {
 func (p *Plane) postReport(endpoint string, report reports.Report) error {
 	data, err := report.DumpReport()
 	if err != nil {
-		return errors.WithMessage(err, "dump report")
-	}
-
-	if err := p.post(endpoint, data); err != nil {
 		return err
 	}
-	return nil
+
+	return p.post(endpoint, data)
 }
 
 func (p *Plane) post(endpoint string, data []byte) error {

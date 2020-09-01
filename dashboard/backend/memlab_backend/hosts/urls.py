@@ -10,4 +10,7 @@ router.register(r'detection_configs', views.DetectionConfigViewSet, basename='de
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('processes/by_machine/<str:machine_id>/', views.ProcessViewSet.as_view({"get": "by_machine"})),
+    path('process_events/by_machine/<str:machine_id>/', views.ProcessEventViewSet.as_view({"get": "by_machine"})),
+    path('detection_configs/by_machine/<str:machine_id>/', views.DetectionConfigViewSet.as_view({"get": "by_machine"})),
 ]

@@ -7,7 +7,10 @@ import (
 	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"time"
 )
+
+const defaultOperatorContextTimeout = time.Minute
 
 var ErrOperatorFailure = errors.New("operator failure")
 
@@ -47,8 +50,12 @@ func (p *Pipeline) runOperators(pid types.Pid) (map[string]interface{}, error) {
 	allReports := make([]reports.Report, 0)
 
 	for _, operator := range p.operators {
-		report, err := operator.Operate(p.context, pid)
+		operatorContext, cancelOperator := context.WithTimeout(p.context, defaultOperatorContextTimeout)
+
+		report, err := operator.Operate(operatorContext, pid)
 		if err != nil {
+			cancelOperator()
+
 			p.logger.Error("Operator failed", zap.String("OperatorName", operator.OperatorName()),
 				zap.Bool("FailPipelineOnError", operator.FailPipelineOnError()), zap.Error(err))
 

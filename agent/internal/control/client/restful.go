@@ -5,13 +5,18 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/pkg/errors"
-	"go.uber.org/zap"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
-var responseContentType = "application/json"
+const (
+	requestTimeout     = time.Second * 30
+	requestContentType = "application/json"
+)
 
 type ApiConfig struct {
 	Url   string
@@ -66,46 +71,52 @@ func NewRestfulClient(ctx context.Context, rootLogger *zap.Logger, apiConfig *Ap
 }
 
 func (rc *RestfulClient) Get(endpoint string) (*http.Response, error) {
-	return rc.doRequest(http.MethodGet, endpoint, nil)
+	return rc.sendRequest(http.MethodGet, endpoint, nil)
 }
 
 func (rc *RestfulClient) Post(endpoint string, message []byte) (*http.Response, error) {
-	return rc.doRequest(http.MethodPost, endpoint, message)
+	return rc.sendRequest(http.MethodPost, endpoint, message)
 }
 
 func (rc *RestfulClient) Delete(endpoint string, message []byte) (*http.Response, error) {
-	return rc.doRequest(http.MethodDelete, endpoint, message)
+	return rc.sendRequest(http.MethodDelete, endpoint, message)
 }
 
 func (rc *RestfulClient) Put(endpoint string, message []byte) (*http.Response, error) {
-	return rc.doRequest(http.MethodPut, endpoint, message)
+	return rc.sendRequest(http.MethodPut, endpoint, message)
 }
 
-func (rc *RestfulClient) doRequest(method string, endpoint string, message []byte) (*http.Response, error) {
+func (rc *RestfulClient) sendRequest(method string, endpoint string, message []byte) (*http.Response, error) {
+	var err error
+
 	// todo: Consider to use (carefully!!!) buffer pools for request and response buffers (perhaps use fasthttp).
 	// todo: Note that this requires a cautious and well-thought-of design, so we don't end up with a memory leak!
 	// todo: Might not be cost-effective considering the relatively small rate of http communication this agent performs.
 	requestBody := bytes.NewBuffer(message)
 
-	url := fmt.Sprintf("%s/%s", rc.apiConfig.Url, trimUrlSeparatorSuffix(endpoint))
-	req, err := http.NewRequestWithContext(rc.context, method, url, requestBody)
+	url := fmt.Sprintf("%s/%s/", rc.apiConfig.Url, trimUrlSeparatorSuffix(endpoint))
+
+	requestContext, cancelRequest := context.WithTimeout(rc.context, requestTimeout)
+	defer func() {
+		if err != nil {
+			cancelRequest()
+		}
+	}()
+
+	request, err := http.NewRequestWithContext(requestContext, method, url, requestBody)
 	if err != nil {
 		return nil, errors.WithMessage(err, "new request")
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Token %s", rc.apiConfig.Token))
-	req.Header.Set("Accept-Encoding", "gzip") // Requests aren't gzipped by default.
+	request.Header.Set("Authorization", fmt.Sprintf("Token %s", rc.apiConfig.Token))
+	request.Header.Set("Accept-Encoding", "gzip") // Requests aren't gzipped by default.
+	request.Header.Set("Content-Type", requestContentType)
 
-	resp, err := rc.httpClient.Do(req)
+	response, err := rc.httpClient.Do(request)
 	if err != nil {
 		return nil, errors.WithMessage(err, "request failed")
 	}
 
-	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, responseContentType) {
-		return nil, errors.Errorf("invalid content type '%s', expected '%s'", contentType, responseContentType)
-	}
-
-	return resp, nil
+	return response, nil
 }
 
 func (rc *RestfulClient) AbortAll() {

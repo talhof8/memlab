@@ -30,7 +30,7 @@ package operators
 //	}
 //
 //	output
-//	return postdetection.NewProcDumpReport(ps)
+//	return postdetection.NewProcDumpReport(ctx, ps)
 //}
 //
 //func (p *ProcDumpOperator) FailPipelineOnError() bool {

@@ -3,8 +3,10 @@ package general
 import (
 	"encoding/json"
 	"github.com/glendc/go-external-ip"
+	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/host"
+	"time"
 )
 
 var (
@@ -12,18 +14,18 @@ var (
 )
 
 type HostStatusReport struct {
-	MachineId            string `json:"machine_id"`
-	PublicIpAddress      string `json:"public_ip_address"`
-	Hostname             string `json:"hostname"`
-	LastBootTime         uint64 `json:"last_boot_at"`
-	OS                   string `json:"operating_system"`
-	Platform             string `json:"platform"`
-	PlatformFamily       string `json:"platform_family"`
-	PlatformVersion      string `json:"platform_version"`
-	KernelVersion        string `json:"kernel_version"`
-	KernelArch           string `json:"kernel_architecture"`
-	VirtualizationSystem string `json:"virtualization_system"`
-	VirtualizationRole   string `json:"virtualization_role"`
+	MachineId            string    `json:"machine_id"`
+	PublicIpAddress      string    `json:"public_ip_address"`
+	Hostname             string    `json:"hostname"`
+	LastBootTime         time.Time `json:"last_boot_at"`
+	OS                   string    `json:"operating_system"`
+	Platform             string    `json:"platform"`
+	PlatformFamily       string    `json:"platform_family"`
+	PlatformVersion      string    `json:"platform_version"`
+	KernelVersion        string    `json:"kernel_version"`
+	KernelArch           string    `json:"kernel_architecture"`
+	VirtualizationSystem string    `json:"virtualization_system"`
+	VirtualizationRole   string    `json:"virtualization_role"`
 }
 
 func NewHostStatusReport(machineId string) (*HostStatusReport, error) {
@@ -44,7 +46,7 @@ func NewHostStatusReport(machineId string) (*HostStatusReport, error) {
 	hostStatusReport.PublicIpAddress = publicIpAddress.String()
 
 	hostStatusReport.Hostname = hostInfo.Hostname
-	hostStatusReport.LastBootTime = hostInfo.BootTime
+	hostStatusReport.LastBootTime = types.TimeFromTimestamp(int64(hostInfo.BootTime))
 	hostStatusReport.OS = hostInfo.OS
 	hostStatusReport.Platform = hostInfo.Platform
 	hostStatusReport.PlatformFamily = hostInfo.PlatformFamily

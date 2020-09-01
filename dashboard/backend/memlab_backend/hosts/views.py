@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 from memlab_backend.hosts import models, serializers
+from memlab_backend.utils.models import add_user_to_validated_data
 from rest_framework import viewsets, mixins, status, decorators
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -14,7 +15,7 @@ class HostViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
     lookup_field = "machine_id"
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, many=True)
+        serializer = self.get_serializer(data=request.data, many=False)
         serializer.is_valid(raise_exception=True)
 
         validated_data = serializer.validated_data
@@ -26,7 +27,9 @@ class HostViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
 
         # todo: support sending a partial list and omit empty values
 
-        host = models.Host.objects.update_or_create(machine_id=machine_id, defaults=validated_data)
+        add_user_to_validated_data(request, validated_data)
+        host, _ = models.Host.objects.update_or_create(user__id=self.request.user.id, machine_id=machine_id,
+                                                       defaults=validated_data)
 
         data = serializer.to_representation(host)
         return Response(data, status=status.HTTP_201_CREATED)
@@ -47,13 +50,23 @@ class ProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Up
         return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, many=True)
+        kwargs['context'] = self.get_serializer_context()
+
+        serializer = serializers.ProcessCreateSerializer(data=request.data, **kwargs)
         serializer.is_valid(raise_exception=True)
 
+        validated_data = serializer.validated_data
         try:
-            for item in serializer.validated_data:
-                _ = models.Process.objects.update_or_create(pid=item["pid"], machine_id=item["machine_id"],
-                                                            defaults=item)
+            host = models.Host.objects.get(user__id=self.request.user.id, machine_id=validated_data["machine_id"])
+        except models.Host.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            for item in validated_data["processes"]:
+                add_user_to_validated_data(request, item)
+                item["host"] = host
+                _ = models.Process.objects.update_or_create(user__id=self.request.user.id, host__id=host.id,
+                                                            pid=item["pid"], defaults=item)
         except KeyError as e:
             raise ValidationError(e)
 

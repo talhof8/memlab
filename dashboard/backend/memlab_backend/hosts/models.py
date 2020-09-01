@@ -5,9 +5,11 @@ from memlab_backend.accounts import models as account_models
 
 
 class Host(models.Model):
+    MACHINE_ID_LENGTH = 32
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(account_models.User, on_delete=models.CASCADE)
-    machine_id = models.CharField(max_length=150, blank=False, null=False)
+    user = models.ForeignKey(account_models.User, on_delete=models.CASCADE, null=False, blank=False)
+    machine_id = models.CharField(max_length=MACHINE_ID_LENGTH, blank=False, null=False)
     public_ip_address = models.GenericIPAddressField(null=False, blank=False)
     hostname = models.CharField(max_length=500, blank=True, null=True)
     first_seen = models.DateTimeField(auto_now_add=True)
@@ -42,7 +44,7 @@ class Process(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(account_models.User, on_delete=models.CASCADE)
+    user = models.ForeignKey(account_models.User, on_delete=models.CASCADE, null=False, blank=False)
     host = models.ForeignKey(Host, on_delete=models.CASCADE, null=False, blank=False)
     pid = models.IntegerField(null=False, blank=False)
     executable = models.CharField(max_length=255, null=False, blank=False)
