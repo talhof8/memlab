@@ -43,12 +43,14 @@ func (d *DetectionRequestsHandler) Handle(ctx context.Context, rootLogger *zap.L
 			&operatorsPkg.CollectMetadata{},
 		}
 		addDetector = detectSignalsRequest.TurnedOn
+	case requests.RequestTypeDetectThresholds, requests.RequestTypeDetectSuspectedHangs:
+		return nil // todo: currently it's a stub to avoid errors, replace when implementing those detectors.
 	default:
 		return errors.Errorf("invalid detector type for request type '%d'", detectionRequest.RequestType())
 	}
 
 	if !addDetector {
-		return d.detectionController.RemoveDetector(detectionRequest)
+		return d.detectionController.RemoveDetector(detectionRequest, detectionOperators)
 	}
 	return d.detectionController.AddDetector(detectionRequest, detectionOperators, true)
 }

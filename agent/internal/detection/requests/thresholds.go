@@ -8,6 +8,7 @@ type DetectThresholds struct {
 	MemoryThreshold          int
 	RestartOnCpuThreshold    bool
 	RestartOnMemoryThreshold bool
+	TurnedOn                 bool
 }
 
 func (n *DetectThresholds) RequestType() int {

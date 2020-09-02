@@ -8,7 +8,6 @@ import (
 	"github.com/memlab/agent/internal/operations/operators"
 	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"sync"
 )
@@ -29,7 +28,6 @@ type SignalDetector struct {
 	detectionOperators   []operators.Operator
 	mergedReportsChan    chan map[string]interface{}
 	kernelCommunicator   *kernelComm.Communicator
-	running              *atomic.Bool
 	detectSignalsRequest *requests.DetectSignals
 	monitorPid           types.Pid
 	monitorPidRaw        uint32
@@ -59,7 +57,6 @@ func newSignalDetector(detectorType DetectorType, ctx context.Context, rootLogge
 		detectionOperators:   detectionOperators,
 		mergedReportsChan:    make(chan map[string]interface{}),
 		kernelCommunicator:   kernelCommunicator,
-		running:              atomic.NewBool(false),
 		detectSignalsRequest: detectSignalsRequest,
 		monitorPid:           detectSignalsRequest.Pid,
 		monitorPidRaw:        detectSignalsRequest.Pid.Uint32(),
@@ -76,8 +73,6 @@ func (sd *SignalDetector) StartDetectionLoop() error {
 	}
 
 	sd.startKernelSignalDetection()
-
-	sd.running.Toggle() // Turn on
 
 	return nil
 }
@@ -152,11 +147,6 @@ func (sd *SignalDetector) stopKernelSignalDetection() {
 
 func (sd *SignalDetector) WaitUntilCompletion() {
 	sd.waitGroup.Wait() // Block until detection goroutines are done.
-	sd.running.Toggle() // Turn off
-}
-
-func (sd *SignalDetector) Running() bool {
-	return sd.running.Load()
 }
 
 func (sd *SignalDetector) StopDetection() error {

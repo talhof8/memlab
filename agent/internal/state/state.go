@@ -38,70 +38,60 @@ func (s *State) AddDetectionConfigs(configsFromBackend map[types.Pid]*responses.
 			continue
 		}
 
-		cachedConfig.DetectSignals = detectionConfig.DetectSignals
-		cachedConfig.DetectThresholds = detectionConfig.DetectThresholds
-		cachedConfig.DetectSuspectedHangs = detectionConfig.DetectSuspectedHangs
-		cachedConfig.CpuThreshold = detectionConfig.CpuThreshold
-		cachedConfig.MemoryThreshold = detectionConfig.MemoryThreshold
-		cachedConfig.SuspectedHangDuration = detectionConfig.SuspectedHangDuration
-		cachedConfig.RestartOnSignal = detectionConfig.RestartOnSignal
-
 		s.dispatchDetectionRequests(detectionConfig, cachedConfig)
+
+		// todo: fix config not updating after 2 iterations
+
+		// Only update cached config after new one was dispatched
+		cachedConfig = detectionConfig
 	}
 }
 
 func (s *State) dispatchDetectionRequests(newConfig, oldConfig *responses.DetectionConfiguration) {
-	if oldConfig == nil {
-		if newConfig.DetectSignals {
-			s.sendSignalDetectionNotification(newConfig)
-		}
-
-		if newConfig.DetectThresholds {
-			s.sendThresholdsDetectionNotification(newConfig)
-		}
-
-		if newConfig.DetectSuspectedHangs {
-			s.sendSuspectedHangsDetectionNotification(newConfig)
-		}
-
+	if oldConfig == nil { // Build initial detection configuration if it's not cached.
+		s.sendSignalDetectionRequest(newConfig)
+		s.sendThresholdsDetectionRequest(newConfig)
+		s.sendSuspectedHangsDetectionRequest(newConfig)
 		return
-	} else {
-		if oldConfig.DetectSignals != newConfig.DetectSignals {
-			s.sendSignalDetectionNotification(newConfig)
-		}
+	}
 
-		if oldConfig.DetectThresholds != newConfig.DetectThresholds {
-			s.sendSignalDetectionNotification(newConfig)
-		}
+	if oldConfig.DetectSignals != newConfig.DetectSignals {
+		s.sendSignalDetectionRequest(newConfig)
+	}
 
-		if oldConfig.DetectSuspectedHangs != newConfig.DetectSuspectedHangs {
-			s.sendSignalDetectionNotification(newConfig)
-		}
+	if oldConfig.DetectThresholds != newConfig.DetectThresholds {
+		s.sendThresholdsDetectionRequest(newConfig)
+	}
+
+	if oldConfig.DetectSuspectedHangs != newConfig.DetectSuspectedHangs {
+		s.sendSuspectedHangsDetectionRequest(newConfig)
 	}
 }
 
-func (s *State) sendSignalDetectionNotification(newConfig *responses.DetectionConfiguration) {
+func (s *State) sendSignalDetectionRequest(newConfig *responses.DetectionConfiguration) {
 	s.detectionRequestsChan <- &requests.DetectSignals{
 		Pid:      newConfig.Pid,
-		TurnedOn: true,
 		Restart:  newConfig.RestartOnSignal,
+		TurnedOn: newConfig.DetectSignals,
 	}
 }
 
-func (s *State) sendThresholdsDetectionNotification(newConfig *responses.DetectionConfiguration) {
+func (s *State) sendThresholdsDetectionRequest(newConfig *responses.DetectionConfiguration) {
 	s.detectionRequestsChan <- &requests.DetectThresholds{
 		Pid:                      newConfig.Pid,
 		CpuThreshold:             newConfig.CpuThreshold,
 		MemoryThreshold:          newConfig.MemoryThreshold,
 		RestartOnCpuThreshold:    newConfig.RestartOnCpuThreshold,
 		RestartOnMemoryThreshold: newConfig.RestartOnMemoryThreshold,
+		TurnedOn:                 newConfig.DetectThresholds,
 	}
 }
 
-func (s *State) sendSuspectedHangsDetectionNotification(newConfig *responses.DetectionConfiguration) {
+func (s *State) sendSuspectedHangsDetectionRequest(newConfig *responses.DetectionConfiguration) {
 	s.detectionRequestsChan <- &requests.DetectSuspectedHangs{
 		Pid:      newConfig.Pid,
 		Duration: newConfig.SuspectedHangDuration,
 		Restart:  newConfig.RestartOnSuspectedHang,
+		TurnedOn: newConfig.DetectSuspectedHangs,
 	}
 }

@@ -6,6 +6,7 @@ type DetectSuspectedHangs struct {
 	Pid      types.Pid
 	Duration uint64
 	Restart  bool
+	TurnedOn bool
 }
 
 func (n *DetectSuspectedHangs) RequestType() int {

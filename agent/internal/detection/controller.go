@@ -54,9 +54,9 @@ func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, det
 
 	c.logger.Debug("Add detector", zap.String("DetectorName", detectorName))
 
-	detector, err := detectors.NewDetector(detectorType, c.context, c.logger, detectionRequest, detectionOperators)
+	detector, err := c.newDetector(detectionRequest, detectionOperators, detectorType)
 	if err != nil {
-		return errors.WithMessage(err, "new detector")
+		return err
 	}
 
 	if _, exists := c.detectors[detectorName]; exists {
@@ -81,7 +81,8 @@ func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, det
 	return nil
 }
 
-func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest) error {
+func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest,
+	detectionOperators []operators.Operator) error {
 	detectorType, err := c.detectorType(detectionRequest)
 	if err != nil {
 		return err
@@ -91,23 +92,23 @@ func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest) 
 
 	c.logger.Debug("Remove detector", zap.String("DetectorName", detectorName))
 
-	if _, exists := c.detectors[detectorName]; !exists {
-		return errDetectorDoesNotExist(detectorName)
-	}
-
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	detector, exists := c.detectors[detectorName]
-	if !exists { // Double-checked locking.
-		return errDetectorDoesNotExist(detectorName)
+
+	// In case agent was reloaded after detector was started in previous agent run, but now config has changed
+	// to stop it, create a new detector object.
+	if !exists {
+		detector, err = c.newDetector(detectionRequest, detectionOperators, detectorType)
+		if err != nil {
+			return err
+		}
 	}
 
-	if detector.Running() {
-		c.logger.Debug("Detector is running, stopping it", zap.String("DetectorName", detectorName))
-		if err := detector.StopDetection(); err != nil {
-			return errors.WithMessagef(err, "stop detector '%s'", detectorName)
-		}
+	c.logger.Debug("Stopping detector", zap.String("DetectorName", detectorName))
+	if err := detector.StopDetection(); err != nil {
+		return errors.WithMessagef(err, "stop detector '%s'", detectorName)
 	}
 
 	delete(c.detectors, detectorName)
@@ -126,6 +127,15 @@ func (c *Controller) detectorType(detectionRequest requests.DetectionRequest) (d
 	}
 
 	return detectorType, nil
+}
+
+func (c *Controller) newDetector(detectionRequest requests.DetectionRequest, detectionOperators []operators.Operator,
+	detectorType detectors.DetectorType) (detectors.Detector, error) {
+	detector, err := detectors.NewDetector(detectorType, c.context, c.logger, detectionRequest, detectionOperators)
+	if err != nil {
+		return nil, errors.WithMessage(err, "new detector")
+	}
+	return detector, nil
 }
 
 func (c *Controller) Start() error {

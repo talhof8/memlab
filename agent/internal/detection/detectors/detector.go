@@ -12,7 +12,6 @@ type Detector interface {
 	StartDetectionLoop() error
 	StopDetection() error
 	WaitUntilCompletion()
-	Running() bool
 	DetectorName() string
 	Operators() []operators.Operator
 	MergedReportsChan() <-chan map[string]interface{}
