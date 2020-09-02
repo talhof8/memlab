@@ -6,6 +6,7 @@ import (
 	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	psUtil "github.com/shirou/gopsutil/process"
+	"gopkg.in/guregu/null.v3"
 	"os"
 	"time"
 )
@@ -14,8 +15,8 @@ type HostProcess struct {
 	Pid         types.Pid `json:"pid"`
 	Executable  string    `json:"executable"`
 	CommandLine string    `json:"command_line"`
-	CreateTime  time.Time `json:"create_time"`
-	LastSeenAt  time.Time `json:"last_seen_at"`
+	CreateTime  null.Time `json:"create_time"`
+	LastSeenAt  null.Time `json:"last_seen_at"`
 	Status      string    `json:"status"`
 }
 
@@ -56,8 +57,8 @@ func NewProcessListReport(machineId string) (*ProcessListReport, error) {
 			errs = multierror.Append(errs, errors.WithMessagef(err, "get create time for pid '%d'", liveProcess.Pid))
 			continue
 		}
-		createTime := types.TimeFromMillisecondTimestamp(createTimeMilliseconds)
-		now := time.Now().UTC()
+		createTime := types.JsonTimeFromMillisecondTimestamp(createTimeMilliseconds)
+		now := null.TimeFrom(time.Now().UTC())
 
 		status, err := liveProcess.Status()
 		if err != nil {

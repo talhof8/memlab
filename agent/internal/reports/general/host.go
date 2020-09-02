@@ -6,7 +6,7 @@ import (
 	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/host"
-	"time"
+	"gopkg.in/guregu/null.v3"
 )
 
 var (
@@ -17,7 +17,7 @@ type HostStatusReport struct {
 	MachineId            string    `json:"machine_id"`
 	PublicIpAddress      string    `json:"public_ip_address"`
 	Hostname             string    `json:"hostname"`
-	LastBootTime         time.Time `json:"last_boot_at"`
+	LastBootTime         null.Time `json:"last_boot_at"`
 	OS                   string    `json:"operating_system"`
 	Platform             string    `json:"platform"`
 	PlatformFamily       string    `json:"platform_family"`
@@ -46,7 +46,7 @@ func NewHostStatusReport(machineId string) (*HostStatusReport, error) {
 	hostStatusReport.PublicIpAddress = publicIpAddress.String()
 
 	hostStatusReport.Hostname = hostInfo.Hostname
-	hostStatusReport.LastBootTime = types.TimeFromTimestamp(int64(hostInfo.BootTime))
+	hostStatusReport.LastBootTime = types.JsonTimeFromTimestamp(int64(hostInfo.BootTime))
 	hostStatusReport.OS = hostInfo.OS
 	hostStatusReport.Platform = hostInfo.Platform
 	hostStatusReport.PlatformFamily = hostInfo.PlatformFamily

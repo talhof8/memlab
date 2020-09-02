@@ -15,4 +15,5 @@ require (
 	github.com/shirou/gopsutil v2.20.7+incompatible
 	go.uber.org/atomic v1.6.0
 	go.uber.org/zap v1.15.0
+	gopkg.in/guregu/null.v3 v3.5.0
 )

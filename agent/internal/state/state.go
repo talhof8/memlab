@@ -34,7 +34,7 @@ func (s *State) AddDetectionConfigs(configsFromBackend map[types.Pid]*responses.
 		}
 
 		// Avoid redundant update if config didn't change
-		if !detectionConfig.ModifiedAt.After(cachedConfig.ModifiedAt) {
+		if !detectionConfig.ModifiedAt.Time.After(cachedConfig.ModifiedAt.Time) {
 			continue
 		}
 

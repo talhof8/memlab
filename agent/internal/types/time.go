@@ -1,11 +1,14 @@
 package types
 
-import "time"
+import (
+	"gopkg.in/guregu/null.v3"
+	"time"
+)
 
-func TimeFromMillisecondTimestamp(timestamp int64) time.Time {
-	return TimeFromTimestamp(timestamp / 1000)
+func JsonTimeFromMillisecondTimestamp(timestamp int64) null.Time {
+	return JsonTimeFromTimestamp(timestamp / 1000)
 }
 
-func TimeFromTimestamp(timestamp int64) time.Time {
-	return time.Unix(timestamp, 0).UTC()
+func JsonTimeFromTimestamp(timestamp int64) null.Time {
+	return null.TimeFrom(time.Unix(timestamp, 0).UTC())
 }
