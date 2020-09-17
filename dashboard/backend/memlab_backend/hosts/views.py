@@ -94,7 +94,7 @@ class ProcessEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixi
 
 class DetectionConfigViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
                              mixins.ListModelMixin, viewsets.GenericViewSet):
-    # Note: intentionally not allowing /DELETE requests, currently our agent won't identify them being removed.
+    # Note: intentionally not allowing /DELETE requests, because our agent won't identify deleted detection configs.
 
     queryset = models.DetectionConfig.objects.all()
     serializer_class = serializers.DetectionConfigSerializer

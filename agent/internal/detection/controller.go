@@ -10,23 +10,15 @@ import (
 	"sync"
 )
 
-func errDetectorAlreadyExists(detectorName string) error {
-	return errors.Errorf("detector '%s' already exists", detectorName)
-}
-
-func errDetectorDoesNotExist(detectorName string) error {
-	return errors.Errorf("detector '%s' does not exist", detectorName)
-}
-
 type Controller struct {
-	logger             *zap.Logger
-	waitGroup          sync.WaitGroup
-	context            context.Context
-	cancel             context.CancelFunc
-	detectors          map[string]detectors.Detector
-	lock               sync.RWMutex
-	detectorsSemaphore chan int
-	mergedReportsChan  chan map[string]interface{}
+	logger               *zap.Logger
+	waitGroup            sync.WaitGroup
+	context              context.Context
+	cancel               context.CancelFunc
+	detectors            map[string]detectors.Detector
+	lock                 sync.RWMutex
+	detectorsSemaphore   chan int
+	detectionReportsChan chan map[string]interface{}
 }
 
 func NewController(rootLogger *zap.Logger, maxConcurrentDetectors int) (*Controller, error) {
@@ -34,18 +26,17 @@ func NewController(rootLogger *zap.Logger, maxConcurrentDetectors int) (*Control
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Controller{
-		logger:             logger,
-		context:            ctx,
-		cancel:             cancel,
-		detectors:          make(map[string]detectors.Detector, 0),
-		detectorsSemaphore: make(chan int, maxConcurrentDetectors),
-		mergedReportsChan:  make(chan map[string]interface{}, 0),
+		logger:               logger,
+		context:              ctx,
+		cancel:               cancel,
+		detectors:            make(map[string]detectors.Detector, 0),
+		detectorsSemaphore:   make(chan int, maxConcurrentDetectors),
+		detectionReportsChan: make(chan map[string]interface{}, 0),
 	}, nil
 }
 
-func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, detectionOperators []operators.Operator,
-	start bool) error {
-	detectorType, err := c.detectorType(detectionRequest)
+func (c *Controller) AddDetector(request requests.DetectionRequest, operators []operators.Operator, start bool) error {
+	detectorType, err := c.detectorType(request)
 	if err != nil {
 		return err
 	}
@@ -54,7 +45,7 @@ func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, det
 
 	c.logger.Debug("Add detector", zap.String("DetectorName", detectorName))
 
-	detector, err := c.newDetector(detectionRequest, detectionOperators, detectorType)
+	detector, err := c.newDetector(request, operators, detectorType)
 	if err != nil {
 		return err
 	}
@@ -73,17 +64,14 @@ func (c *Controller) AddDetector(detectionRequest requests.DetectionRequest, det
 	c.detectors[detectorName] = detector
 
 	if start {
-		c.logger.Debug("Detector is not running, running it since 'start' flag is turned-on",
-			zap.String("DetectorName", detectorName))
-
+		c.logger.Debug("Starting detector", zap.String("DetectorName", detectorName))
 		c.startDetector(detector)
 	}
 	return nil
 }
 
-func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest,
-	detectionOperators []operators.Operator) error {
-	detectorType, err := c.detectorType(detectionRequest)
+func (c *Controller) RemoveDetector(request requests.DetectionRequest, operators []operators.Operator) error {
+	detectorType, err := c.detectorType(request)
 	if err != nil {
 		return err
 	}
@@ -100,7 +88,7 @@ func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest,
 	// In case agent was reloaded after detector was started in previous agent run, but now config has changed
 	// to stop it, create a new detector object.
 	if !exists {
-		detector, err = c.newDetector(detectionRequest, detectionOperators, detectorType)
+		detector, err = c.newDetector(request, operators, detectorType)
 		if err != nil {
 			return err
 		}
@@ -117,13 +105,11 @@ func (c *Controller) RemoveDetector(detectionRequest requests.DetectionRequest,
 }
 
 func (c *Controller) detectorType(detectionRequest requests.DetectionRequest) (detectors.DetectorType, error) {
-	var detectorType detectors.DetectorType
+	requestType := detectionRequest.RequestType()
 
-	switch detectionRequest.RequestType() {
-	case requests.RequestTypeDetectSignals:
-		detectorType = detectors.DetectorTypeSignals
-	default:
-		return 0, errors.Errorf("invalid detector type for request type '%d'", detectionRequest.RequestType())
+	detectorType, found := requestTypeToDetectorType[requestType]
+	if !found {
+		return 0, errors.Errorf("invalid detector type for request type '%d'", requestType)
 	}
 
 	return detectorType, nil
@@ -192,13 +178,12 @@ func (c *Controller) mergeDetectorReportsChan(detector detectors.Detector) {
 	for {
 		select {
 		case <-c.context.Done():
-			close(c.mergedReportsChan)
 			return
-		case mergedReport, ok := <-detector.MergedReportsChan():
+		case detectionReport, ok := <-detector.ReportsChan():
 			if !ok {
 				return
 			}
-			c.mergedReportsChan <- mergedReport
+			c.detectionReportsChan <- detectionReport
 		}
 	}
 }
@@ -210,9 +195,10 @@ func (c *Controller) WaitUntilCompletion() {
 func (c *Controller) Stop() error {
 	c.logger.Debug("Stop detection controller")
 	c.cancel() // Will cancel all child-contexts passed to detectors.
+
 	return nil
 }
 
-func (c *Controller) MergedReportsChan() <-chan map[string]interface{} {
-	return c.mergedReportsChan
+func (c *Controller) DetectionReportsChan() <-chan map[string]interface{} {
+	return c.detectionReportsChan
 }

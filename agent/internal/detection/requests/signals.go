@@ -8,6 +8,6 @@ type DetectSignals struct {
 	TurnedOn bool
 }
 
-func (n *DetectSignals) RequestType() int {
+func (n *DetectSignals) RequestType() RequestType {
 	return RequestTypeDetectSignals
 }

@@ -104,22 +104,21 @@ func (p *Plane) reportProcessEvents() {
 	defer p.waitGroup.Done()
 
 	for {
-		mergedReportsChan := p.detectionRequestsHandler.detectionController.MergedReportsChan()
+		detectionReportsChan := p.detectionRequestsHandler.detectionController.DetectionReportsChan()
 
 		select {
 		case <-p.context.Done():
 			return
-		case mergedReport, ok := <-mergedReportsChan:
+		case report, ok := <-detectionReportsChan:
 			if !ok {
-				p.logger.Error("Merge reports channel was closed unexpectedly")
+				p.logger.Error("Detection reports channel was closed unexpectedly")
 				p.cancel()
 				return // todo: re-open instead of returning?
 			}
 
-			data, err := json.Marshal(mergedReport)
+			data, err := json.Marshal(report)
 			if err != nil {
-				p.logger.Error("Failed to marshal merged report", zap.Error(err), zap.Any("Event",
-					mergedReport))
+				p.logger.Error("Failed to marshal report", zap.Error(err), zap.Any("Report", report))
 				continue
 			}
 
@@ -241,10 +240,10 @@ func (p *Plane) handleDetectionRequests() {
 				return // todo: re-open instead of returning?
 			}
 
-			p.logger.Debug("New detection request", zap.Int("Type", detectionRequest.RequestType()))
+			p.logger.Debug("Got detection request", zap.Int("Type", detectionRequest.RequestType().Int()))
 			if err := p.detectionRequestsHandler.Handle(p.context, p.logger, detectionRequest); err != nil {
 				p.logger.Error("Failed to handle detection request", zap.Error(err),
-					zap.Int("RequestType", detectionRequest.RequestType()))
+					zap.Int("RequestType", detectionRequest.RequestType().Int()))
 			}
 		}
 	}

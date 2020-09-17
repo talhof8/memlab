@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	nlFamilyNameReceive = "memlab-ktu"
-	nlFamilyNameSend    = "memlab-utk"
+	NlFamilyNameReceive = "memlab-ktu"
+	NlFamilyNameSend    = "memlab-utk"
 )
 
 // todo: collect process exit code
@@ -26,7 +26,7 @@ type SignalDetector struct {
 	cancel               context.CancelFunc
 	waitGroup            sync.WaitGroup
 	detectionOperators   []operators.Operator
-	mergedReportsChan    chan map[string]interface{}
+	reportsChan          chan map[string]interface{}
 	kernelCommunicator   *kernelComm.Communicator
 	detectSignalsRequest *requests.DetectSignals
 	monitorPid           types.Pid
@@ -34,18 +34,14 @@ type SignalDetector struct {
 }
 
 func newSignalDetector(detectorType DetectorType, ctx context.Context, rootLogger *zap.Logger,
-	detectionRequest requests.DetectionRequest, detectionOperators []operators.Operator) (*SignalDetector, error) {
+	detectionRequest requests.DetectionRequest, detectionOperators []operators.Operator,
+	kernelCommunicator *kernelComm.Communicator) (*SignalDetector, error) {
 	detectSignalsRequest, ok := detectionRequest.(*requests.DetectSignals)
 	if !ok {
 		return nil, errors.New("failed to convert interface to detection request object")
 	}
 
 	logger := rootLogger.Named("signal-detector")
-
-	kernelCommunicator, err := kernelComm.NewCommunicator(logger, nlFamilyNameReceive, nlFamilyNameSend)
-	if err != nil {
-		return nil, errors.WithMessage(err, "new kernel communicator")
-	}
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -55,7 +51,7 @@ func newSignalDetector(detectorType DetectorType, ctx context.Context, rootLogge
 		context:              ctx,
 		cancel:               cancel,
 		detectionOperators:   detectionOperators,
-		mergedReportsChan:    make(chan map[string]interface{}),
+		reportsChan:          make(chan map[string]interface{}),
 		kernelCommunicator:   kernelCommunicator,
 		detectSignalsRequest: detectSignalsRequest,
 		monitorPid:           detectSignalsRequest.Pid,
@@ -126,7 +122,7 @@ func (sd *SignalDetector) handleCaughtSignal(caughtSignal *kernelComm.PayloadCau
 		return
 	}
 
-	sd.mergedReportsChan <- report
+	sd.reportsChan <- report
 }
 
 func (sd *SignalDetector) startKernelSignalDetection() {
@@ -154,10 +150,6 @@ func (sd *SignalDetector) StopDetection() error {
 
 	sd.cancel()
 
-	if err := sd.kernelCommunicator.Close(); err != nil {
-		return errors.WithMessage(err, "close communicator")
-	}
-
 	return nil
 }
 
@@ -171,6 +163,6 @@ func (sd *SignalDetector) Operators() []operators.Operator {
 	}
 }
 
-func (sd *SignalDetector) MergedReportsChan() <-chan map[string]interface{} {
-	return sd.mergedReportsChan
+func (sd *SignalDetector) ReportsChan() <-chan map[string]interface{} {
+	return sd.reportsChan
 }

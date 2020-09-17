@@ -9,6 +9,6 @@ type DetectSuspectedHangs struct {
 	TurnedOn bool
 }
 
-func (n *DetectSuspectedHangs) RequestType() int {
+func (n *DetectSuspectedHangs) RequestType() RequestType {
 	return RequestTypeDetectSuspectedHangs
 }

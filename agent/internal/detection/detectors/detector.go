@@ -3,6 +3,7 @@ package detectors
 import (
 	"context"
 	"github.com/memlab/agent/internal/detection/requests"
+	kernelComm "github.com/memlab/agent/internal/kernel/communication"
 	"github.com/memlab/agent/internal/operations/operators"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -14,34 +15,26 @@ type Detector interface {
 	WaitUntilCompletion()
 	DetectorName() string
 	Operators() []operators.Operator
-	MergedReportsChan() <-chan map[string]interface{}
+	ReportsChan() <-chan map[string]interface{}
 }
 
-type DetectorType int
-
-const (
-	DetectorTypeSignals DetectorType = iota
-)
-
-var (
-	detectorNames = map[DetectorType]string{
-		DetectorTypeSignals: "signal-detector",
-	}
-)
-
-func (dt DetectorType) Name() string {
-	name, found := detectorNames[dt]
-	if !found {
-		return ""
-	}
-	return name
-}
+var kernelCommunicator *kernelComm.Communicator
 
 func NewDetector(detectorType DetectorType, ctx context.Context, rootLogger *zap.Logger,
 	detectionRequest requests.DetectionRequest, detectionOperators []operators.Operator) (Detector, error) {
 	switch detectorType {
 	case DetectorTypeSignals:
-		return newSignalDetector(detectorType, ctx, rootLogger, detectionRequest, detectionOperators)
+		if kernelCommunicator == nil {
+			var err error
+			kernelCommunicator, err = kernelComm.NewCommunicator(rootLogger, NlFamilyNameReceive, NlFamilyNameSend)
+			if err != nil {
+				return nil, errors.WithMessage(err, "new kernel communicator")
+			}
+
+			// todo: need to close it when detection controller stops.
+		}
+
+		return newSignalDetector(detectorType, ctx, rootLogger, detectionRequest, detectionOperators, kernelCommunicator)
 	default:
 		return nil, errors.Errorf("unknown detector type '%d'", detectorType)
 	}

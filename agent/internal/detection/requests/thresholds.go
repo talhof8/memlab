@@ -11,6 +11,6 @@ type DetectThresholds struct {
 	TurnedOn                 bool
 }
 
-func (n *DetectThresholds) RequestType() int {
+func (n *DetectThresholds) RequestType() RequestType {
 	return RequestTypeDetectThresholds
 }

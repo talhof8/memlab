@@ -40,10 +40,8 @@ func (s *State) AddDetectionConfigs(configsFromBackend map[types.Pid]*responses.
 
 		s.dispatchDetectionRequests(detectionConfig, cachedConfig)
 
-		// todo: fix config not updating after 2 iterations
-
 		// Only update cached config after new one was dispatched
-		cachedConfig = detectionConfig
+		s.detectionConfigsCache[pid] = detectionConfig
 	}
 }
 
