@@ -11,7 +11,7 @@ class HostSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "user"]
 
 
-class ProcessSerializer(serializers.HyperlinkedModelSerializer):
+class ProcessSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField()
 
     class Meta:
@@ -43,7 +43,7 @@ class ProcessCreateSerializer(serializers.Serializer):
         }
 
 
-class ProcessEventSerializer(serializers.HyperlinkedModelSerializer):
+class ProcessEventSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField()
 
     class Meta:
@@ -56,6 +56,7 @@ class DetectionConfigSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField()
     pid = serializers.SerializerMethodField("get_pid")
     machine_id = serializers.SerializerMethodField("get_machine_id")
+    process_create_time = serializers.SerializerMethodField("get_process_create_time")
 
     class Meta:
         model = models.DetectionConfig
@@ -67,3 +68,6 @@ class DetectionConfigSerializer(serializers.ModelSerializer):
 
     def get_machine_id(self, obj):
         return obj.process.host.machine_id
+
+    def get_process_create_time(self, obj):
+        return obj.process.create_time

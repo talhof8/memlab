@@ -1,6 +1,9 @@
 package requests
 
-import "github.com/memlab/agent/internal/types"
+import (
+	"fmt"
+	"github.com/memlab/agent/internal/types"
+)
 
 type DetectSignals struct {
 	Pid      types.Pid
@@ -10,4 +13,8 @@ type DetectSignals struct {
 
 func (n *DetectSignals) RequestType() RequestType {
 	return RequestTypeDetectSignals
+}
+
+func (n *DetectSignals) Name() string {
+	return fmt.Sprintf("%d.%d", n.RequestType(), n.Pid)
 }

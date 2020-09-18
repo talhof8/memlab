@@ -1,7 +1,7 @@
 package control
 
 import (
-	"github.com/memlab/agent/internal/control/client"
+	"github.com/memlab/agent/internal/client"
 	"github.com/pkg/errors"
 	"time"
 )

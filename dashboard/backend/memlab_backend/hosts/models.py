@@ -114,3 +114,4 @@ class DetectionConfig(models.Model):
     restart_on_cpu_threshold = models.BooleanField(default=False)
     restart_on_memory_threshold = models.BooleanField(default=False)
     restart_on_suspected_hang = models.BooleanField(default=False)
+    is_relevant = models.BooleanField(default=True)

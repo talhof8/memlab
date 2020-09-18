@@ -8,6 +8,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 
+def _last_day():
+    return timezone.now().date() - timedelta(days=1)
+
+
 class HostViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin,
                   viewsets.GenericViewSet):
     queryset = models.Host.objects.all()
@@ -45,7 +49,8 @@ class ProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Up
 
     @decorators.action(detail=False, methods=['get'], url_path='by_machine')
     def by_machine(self, request, machine_id):
-        instances = models.Process.objects.filter(user__id=self.request.user.id, host__machine_id=machine_id)
+        instances = models.Process.objects.filter(user__id=self.request.user.id, host__machine_id=machine_id,
+                                                  last_seen_at__gte=_last_day())
         serializer = self.get_serializer(instances, many=True)
         return Response(serializer.data)
 
@@ -102,20 +107,29 @@ class DetectionConfigViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin,
     @decorators.action(detail=False, methods=['get'], url_path='by_machine')
     def by_machine(self, request, machine_id):
         instances = models.DetectionConfig.objects.filter(user__id=self.request.user.id,
+                                                          is_relevant=True,
                                                           process__host__machine_id=machine_id,
-                                                          process__last_seen_at__gte=self.__last_day())
+                                                          process__last_seen_at__gte=_last_day())
         serializer = self.get_serializer(instances, many=True)
         return Response(serializer.data)
 
     def list(self, request, *args, **kwargs):
         instances = models.DetectionConfig.objects.filter(user__id=self.request.user.id,
-                                                          process__last_seen_at__gte=self.__last_day())
+                                                          is_relevant=True,
+                                                          process__last_seen_at__gte=_last_day())
         serializer = self.get_serializer(instances, many=True)
         return Response(serializer.data)
 
-    @staticmethod
-    def __last_day():
-        return timezone.now().date() - timedelta(days=1)
+    @decorators.action(detail=False, methods=['post'], url_path='mark_irrelevant')
+    def mark_irrelevant(self, request, record_id):
+        instance = models.DetectionConfig.objects.get(uset__id=self.request.user.id, id=record_id)
+        if not instance.is_relevant:  # It's already set as irrelevant
+            return Response(status=status.HTTP_200_OK)
+
+        instance.is_relevant = False
+        instance.save()
+
+        return Response(status=status.HTTP_200_OK)
 
     def get_serializer_context(self):
         return {'request': None}

@@ -14,4 +14,5 @@ func (rt RequestType) Int() int {
 
 type DetectionRequest interface {
 	RequestType() RequestType
+	Name() string
 }

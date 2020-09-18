@@ -37,7 +37,7 @@ func (p *Pipeline) AddOperators(ops ...operators.Operator) {
 	p.operators = append(p.operators, ops...)
 }
 
-func (p *Pipeline) Start(pid types.Pid) (map[string]interface{}, error) {
+func (p *Pipeline) Run(pid types.Pid) (map[string]interface{}, error) {
 	mergedReportsDump, err := p.runOperators(pid)
 	if err != nil {
 		return nil, err

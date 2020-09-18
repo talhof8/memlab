@@ -1,4 +1,4 @@
-package responses
+package models
 
 import (
 	"github.com/memlab/agent/internal/types"
@@ -6,6 +6,7 @@ import (
 )
 
 type DetectionConfiguration struct {
+	ID                       string    `json:"id,omitempty"`
 	Pid                      types.Pid `json:"pid"`
 	CreatedAt                null.Time `json:"created_at"`
 	ModifiedAt               null.Time `json:"modified_at"`
@@ -19,4 +20,6 @@ type DetectionConfiguration struct {
 	RestartOnCpuThreshold    bool      `json:"restart_on_cpu_threshold"`
 	RestartOnMemoryThreshold bool      `json:"restart_on_memory_threshold"`
 	RestartOnSuspectedHang   bool      `json:"restart_on_suspected_hang"`
+	IsRelevant               bool      `json:"is_relevant,omitempty"`
+	ProcessCreateTime        null.Time `json:"process_create_time,omitempty"`
 }

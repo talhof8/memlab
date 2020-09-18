@@ -1,6 +1,9 @@
 package requests
 
-import "github.com/memlab/agent/internal/types"
+import (
+	"fmt"
+	"github.com/memlab/agent/internal/types"
+)
 
 type DetectThresholds struct {
 	Pid                      types.Pid
@@ -13,4 +16,8 @@ type DetectThresholds struct {
 
 func (n *DetectThresholds) RequestType() RequestType {
 	return RequestTypeDetectThresholds
+}
+
+func (n *DetectThresholds) Name() string {
+	return fmt.Sprintf("%d.%d", n.RequestType(), n.Pid)
 }

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/jessevdk/go-flags"
+	"github.com/memlab/agent/internal/client"
 	"github.com/memlab/agent/internal/control"
-	"github.com/memlab/agent/internal/control/client"
 	"github.com/memlab/agent/internal/detection"
 	"github.com/memlab/agent/internal/logging"
 	"github.com/pkg/errors"

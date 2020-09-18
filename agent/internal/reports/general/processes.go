@@ -3,6 +3,7 @@ package general
 import (
 	"encoding/json"
 	"github.com/hashicorp/go-multierror"
+	"github.com/memlab/agent/internal/client/models"
 	"github.com/memlab/agent/internal/types"
 	"github.com/pkg/errors"
 	psUtil "github.com/shirou/gopsutil/process"
@@ -11,18 +12,9 @@ import (
 	"time"
 )
 
-type HostProcess struct {
-	Pid         types.Pid `json:"pid"`
-	Executable  string    `json:"executable"`
-	CommandLine string    `json:"command_line"`
-	CreateTime  null.Time `json:"create_time"`
-	LastSeenAt  null.Time `json:"last_seen_at"`
-	Status      string    `json:"status"`
-}
-
 type ProcessListReport struct {
-	MachineId string         `json:"machine_id"`
-	List      []*HostProcess `json:"processes"`
+	MachineId string            `json:"machine_id"`
+	List      []*models.Process `json:"processes"`
 }
 
 func NewProcessListReport(machineId string) (*ProcessListReport, error) {
@@ -31,12 +23,12 @@ func NewProcessListReport(machineId string) (*ProcessListReport, error) {
 		return nil, errors.WithMessage(err, "get live process list")
 	}
 
-	hostProcesses := make([]*HostProcess, 0, len(liveProcesses))
+	hostProcesses := make([]*models.Process, 0, len(liveProcesses))
 
 	var errs error
 
 	for _, liveProcess := range liveProcesses {
-		if int(liveProcess.Pid) == os.Getpid() { // Do not report agent pid.
+		if int(liveProcess.Pid) == os.Getpid() { // Do not report agent's process.
 			continue
 		}
 
@@ -66,7 +58,7 @@ func NewProcessListReport(machineId string) (*ProcessListReport, error) {
 			continue
 		}
 
-		hostProcess := &HostProcess{
+		hostProcess := &models.Process{
 			Pid:         types.Pid(liveProcess.Pid),
 			Executable:  executable,
 			CommandLine: cmdLine,

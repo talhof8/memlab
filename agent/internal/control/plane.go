@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/memlab/agent/internal/control/client"
-	"github.com/memlab/agent/internal/control/client/responses"
+	"github.com/cenkalti/backoff/v4"
+	"github.com/memlab/agent/internal/client"
+	"github.com/memlab/agent/internal/client/models"
 	"github.com/memlab/agent/internal/detection"
 	"github.com/memlab/agent/internal/host"
 	"github.com/memlab/agent/internal/reports"
@@ -25,6 +26,7 @@ const (
 	endpointProcesses        = "processes"
 	endpointProcessEvents    = "process_events"
 	endpointDetectionConfigs = "detection_configs"
+	maxBackoffRetries        = 10
 )
 
 type Plane struct {
@@ -113,7 +115,7 @@ func (p *Plane) reportProcessEvents() {
 			if !ok {
 				p.logger.Error("Detection reports channel was closed unexpectedly")
 				p.cancel()
-				return // todo: re-open instead of returning?
+				return
 			}
 
 			data, err := json.Marshal(report)
@@ -122,6 +124,7 @@ func (p *Plane) reportProcessEvents() {
 				continue
 			}
 
+			p.logger.Debug("Reporting process event", zap.Any("Data", report))
 			if err := p.post(endpointProcessEvents, data); err != nil {
 				p.logger.Error("Failed to post event", zap.Error(err))
 			}
@@ -167,7 +170,7 @@ func (p *Plane) reportHostStatus() {
 		return
 	}
 
-	if err := p.postReport(endpointHosts, report); err != nil {
+	if err := p.sendReport(endpointHosts, report); err != nil {
 		p.logger.Error("Failed to post report", zap.Error(err))
 	}
 }
@@ -199,7 +202,7 @@ func (p *Plane) reportProcessList() {
 		p.logger.Error("Failed to create process list report", zap.Error(err))
 	}
 
-	if err := p.postReport(endpointProcesses, report); err != nil {
+	if err := p.sendReport(endpointProcesses, report); err != nil {
 		p.logger.Error("Failed to post report", zap.Error(err))
 	}
 }
@@ -221,8 +224,25 @@ func (p *Plane) fetchDetectionConfigs() {
 				continue
 			}
 
-			p.state.AddDetectionConfigs(detectionConfigs)
+			for _, detectionConfig := range detectionConfigs {
+				if err := p.state.PutDetectionConfig(detectionConfig); err != nil {
+					if err == statePkg.ErrExpiredDetectionConfig {
+						p.markDetectionConfigIrrelevant(detectionConfig)
+					} else {
+						p.logger.Error("Failed to put detection config", zap.Error(err))
+					}
+					continue
+				}
+			}
 		}
+	}
+}
+
+func (p *Plane) markDetectionConfigIrrelevant(detectionConfig *models.DetectionConfiguration) {
+	endpoint := fmt.Sprintf("%s/mark_irrelevant/%s", endpointDetectionConfigs, detectionConfig.ID)
+
+	if err := p.post(endpoint, nil); err != nil {
+		p.logger.Error("Failed to mark detection config as irrelevant", zap.Error(err))
 	}
 }
 
@@ -237,7 +257,7 @@ func (p *Plane) handleDetectionRequests() {
 			if !ok {
 				p.logger.Error("Detection requests channel was closed unexpectedly")
 				p.cancel()
-				return // todo: re-open instead of returning?
+				return
 			}
 
 			p.logger.Debug("Got detection request", zap.Int("Type", detectionRequest.RequestType().Int()))
@@ -249,20 +269,20 @@ func (p *Plane) handleDetectionRequests() {
 	}
 }
 
-func (p *Plane) fetchDetectionConfigsFromBackend() (map[types.Pid]*responses.DetectionConfiguration, bool) {
+func (p *Plane) fetchDetectionConfigsFromBackend() (map[types.Pid]*models.DetectionConfiguration, bool) {
 	endpoint := fmt.Sprintf("%s/by_machine/%s/", endpointDetectionConfigs, p.machineId)
 	bodyBytes, success := p.fetchFromBackend(endpoint)
 	if !success {
 		return nil, false
 	}
 
-	configList := make([]*responses.DetectionConfiguration, 0)
+	configList := make([]*models.DetectionConfiguration, 0)
 	if err := json.Unmarshal(bodyBytes, &configList); err != nil {
 		p.logger.Error("Failed to parse http response body", zap.Error(err))
 		return nil, false
 	}
 
-	configs := make(map[types.Pid]*responses.DetectionConfiguration, len(configList))
+	configs := make(map[types.Pid]*models.DetectionConfiguration, len(configList))
 	for _, detectionConfiguration := range configList {
 		configs[detectionConfiguration.Pid] = detectionConfiguration
 	}
@@ -293,7 +313,7 @@ func (p *Plane) fetchFromBackend(endpoint string) ([]byte, bool) {
 	return bodyBytes, true
 }
 
-func (p *Plane) postReport(endpoint string, report reports.Report) error {
+func (p *Plane) sendReport(endpoint string, report reports.Report) error {
 	data, err := report.DumpReport()
 	if err != nil {
 		return err
@@ -303,7 +323,21 @@ func (p *Plane) postReport(endpoint string, report reports.Report) error {
 }
 
 func (p *Plane) post(endpoint string, data []byte) error {
-	response, err := p.client.Post(endpoint, data)
+	backOffPolicy := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), maxBackoffRetries)
+
+	var (
+		response *http.Response
+		err      error
+	)
+
+	err = backoff.Retry(func() error {
+		response, err = p.client.Post(endpoint, data)
+		if err != nil {
+			return err
+		}
+		return nil
+	}, backOffPolicy)
+
 	if err != nil {
 		return err
 	}

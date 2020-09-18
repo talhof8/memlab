@@ -15,7 +15,7 @@ type Controller struct {
 	waitGroup            sync.WaitGroup
 	context              context.Context
 	cancel               context.CancelFunc
-	detectors            map[string]detectors.Detector
+	requestDetectors     map[string]detectors.Detector
 	lock                 sync.RWMutex
 	detectorsSemaphore   chan int
 	detectionReportsChan chan map[string]interface{}
@@ -29,7 +29,7 @@ func NewController(rootLogger *zap.Logger, maxConcurrentDetectors int) (*Control
 		logger:               logger,
 		context:              ctx,
 		cancel:               cancel,
-		detectors:            make(map[string]detectors.Detector, 0),
+		requestDetectors:     make(map[string]detectors.Detector, 0),
 		detectorsSemaphore:   make(chan int, maxConcurrentDetectors),
 		detectionReportsChan: make(chan map[string]interface{}, 0),
 	}, nil
@@ -42,29 +42,31 @@ func (c *Controller) AddDetector(request requests.DetectionRequest, operators []
 	}
 
 	detectorName := detectorType.Name()
+	requestName := request.Name()
 
-	c.logger.Debug("Add detector", zap.String("DetectorName", detectorName))
+	funcLogger := c.logger.With(zap.String("RequestName", requestName), zap.String("DetectorName", detectorName))
+	funcLogger.Debug("Add detector")
 
 	detector, err := c.newDetector(request, operators, detectorType)
 	if err != nil {
 		return err
 	}
 
-	if _, exists := c.detectors[detectorName]; exists {
-		return errDetectorAlreadyExists(detectorName)
+	if _, exists := c.requestDetectors[requestName]; exists {
+		return errDetectorAlreadyExists(requestName)
 	}
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if _, exists := c.detectors[detectorName]; exists { // Double-checked locking.
-		return errDetectorAlreadyExists(detectorName)
+	if _, exists := c.requestDetectors[requestName]; exists { // Double-checked locking.
+		return errDetectorAlreadyExists(requestName)
 	}
 
-	c.detectors[detectorName] = detector
+	c.requestDetectors[requestName] = detector
 
 	if start {
-		c.logger.Debug("Starting detector", zap.String("DetectorName", detectorName))
+		funcLogger.Debug("Starting detector")
 		c.startDetector(detector)
 	}
 	return nil
@@ -77,13 +79,15 @@ func (c *Controller) RemoveDetector(request requests.DetectionRequest, operators
 	}
 
 	detectorName := detectorType.Name()
+	requestName := request.Name()
 
-	c.logger.Debug("Remove detector", zap.String("DetectorName", detectorName))
+	funcLogger := c.logger.With(zap.String("RequestName", requestName), zap.String("DetectorName", detectorName))
+	funcLogger.Debug("Remove detector")
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	detector, exists := c.detectors[detectorName]
+	detector, exists := c.requestDetectors[requestName]
 
 	// In case agent was reloaded after detector was started in previous agent run, but now config has changed
 	// to stop it, create a new detector object.
@@ -94,12 +98,12 @@ func (c *Controller) RemoveDetector(request requests.DetectionRequest, operators
 		}
 	}
 
-	c.logger.Debug("Stopping detector", zap.String("DetectorName", detectorName))
+	funcLogger.Debug("Stopping detector")
 	if err := detector.StopDetection(); err != nil {
 		return errors.WithMessagef(err, "stop detector '%s'", detectorName)
 	}
 
-	delete(c.detectors, detectorName)
+	delete(c.requestDetectors, detectorName)
 
 	return nil
 }
@@ -130,7 +134,7 @@ func (c *Controller) Start() error {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	for _, detector := range c.detectors {
+	for _, detector := range c.requestDetectors {
 		c.startDetector(detector) // Note: must not block otherwise RLock() will be blocked as well.
 	}
 

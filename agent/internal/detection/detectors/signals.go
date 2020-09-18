@@ -116,7 +116,7 @@ func (sd *SignalDetector) handleCaughtSignal(caughtSignal *kernelComm.PayloadCau
 
 	operatorsPipeline := operations.NewPipeline(sd.context, sd.logger, sd.detectionOperators)
 
-	report, err := operatorsPipeline.Start(sd.monitorPid)
+	report, err := operatorsPipeline.Run(sd.monitorPid)
 	if err != nil {
 		funcLogger.Error("Failed to run operators pipeline", zap.Error(err))
 		return
